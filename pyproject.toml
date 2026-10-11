@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "kimodo-als-pipeline"
 version = "0.1.0"
 description = "Independent Kimodo authoring, ALS resource production and Godot validation tools"
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE.md", "NOTICE", "ASSET_LICENSE.md", "THIRD_PARTY_NOTICES.md", "licenses/source/*.md"]
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26", "scipy>=1.11", "ufbx==0.0.5"]
 

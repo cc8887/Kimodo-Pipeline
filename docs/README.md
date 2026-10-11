@@ -5,7 +5,8 @@
 - [本次迁移验证](verification/2026-10-11-independent-workspace.md)：源码来源、测试、FBX、真实导入/场景、失败与未覆盖项。
 - [生产算法说明](../tools/kimodo_pipeline/README.md)：DAG、约束、派生与原质量门禁。
 - [逐资产合同](architecture/kimodo-als-asset-contracts.json)：当前迁移的机器可读资源合同。
-- [来源与许可边界](architecture/source-and-license-boundaries.md)：源工程的三份声明、独立目录中的资产范围和第三方依赖。
+- [来源与许可边界](architecture/source-and-license-boundaries.md)：Pipeline 非商业许可、原工程声明保留、独立资产范围和第三方依赖。
+- [非商业许可验证](verification/2026-10-11-noncommercial-license.md)：官方许可正文、原声明、包许可元数据与敏感内容检查。
 - [敏感信息修复验证](verification/2026-10-11-sensitivity-remediation.md)：路径清理、许可保留及本地初始历史清理的证据和边界。
 
 其余 `architecture/kimodo-*.md` 来自 Godot 项目的设计文档快照。它们说明具体算法，文中旧时间点、历史包、消费侧 PowerShell 命令及历史验证链接仍属于原 Godot 项目；历史验证记录没有全量复制到此仓库。安装与日常操作按本仓库入门教程，目录边界按独立目录契约，本次迁移事实按本次验证记录。

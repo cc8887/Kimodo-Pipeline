@@ -4,6 +4,8 @@
 
 **第一次使用请从 [入门教程](docs/入门教程.md) 开始。** 教程包含 Windows/WSL 终端区分、官方 Kimodo 下载、Llama 权限申请、模型预下载、CPU 方案地址、日常生产、prompt 修改和每批 Motion Viewer 检查。
 
+**本 Pipeline 自有代码和文档采用 PolyForm Noncommercial 1.0.0，仅授权非商业用途；商业使用须取得权利人另行授权。** 许可正文见 [LICENSE.md](LICENSE.md)，具体范围见 [NOTICE](NOTICE)。
+
 ## 本机快速使用
 
 在本目录打开 PowerShell：
@@ -40,6 +42,6 @@ $KimodoPython = (& .venv-win\Scripts\python.exe -c "from tools.kimodo_pipeline.p
 
 文档索引见 [docs/README.md](docs/README.md)，本次测试、真实导入和未覆盖项见 [迁移验证记录](docs/verification/2026-10-11-independent-workspace.md)。
 
-代码与文档许可见 [LICENSE.md](LICENSE.md)，资产范围与第三方条款见 [ASSET_LICENSE.md](ASSET_LICENSE.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。三份声明原文从源工程保留，独立目录中的适用范围见 [来源与许可边界](docs/architecture/source-and-license-boundaries.md)。
+资产范围与第三方条款见 [ASSET_LICENSE.md](ASSET_LICENSE.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。原工程三份声明与署名完整保留在 [licenses/source/](licenses/source/README.md)，其既有 MIT 授权与第三方许可继续适用于原材料。独立目录中的适用范围见 [来源与许可边界](docs/architecture/source-and-license-boundaries.md)。
 
 此 Git 仓库当前只有本地历史，没有配置远程。安装使用源码 editable 模式；wheel/离线安装包尚未作为交付形式验证。

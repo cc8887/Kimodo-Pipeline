@@ -1,0 +1,20 @@
+Required Notice: Copyright (c) 2026 Godot ALS contributors
+
+The independent Kimodo ALS Pipeline's project-owned integration code,
+scripts, tests, rules and associated documentation are offered under the
+PolyForm Noncommercial License 1.0.0 in LICENSE.md. Commercial use of that
+offering is not authorized by this license; it requires a separate license
+from the applicable rights holders. Permitted purposes are defined by the
+unchanged PolyForm terms, including their listed organizational uses.
+
+This notice does not replace licenses independently granted for original
+Godot ALS material or other third-party material. Original source notices
+and attribution are preserved in licenses/source/. Material received under
+an existing MIT license retains that authorization; the new project terms
+do not revoke it or impose restrictions on upstream releases.
+
+Exported, reference, generated and retargeted assets have separate rights
+and are covered by ASSET_LICENSE.md and their applicable source terms.
+Kimodo, Llama/LLM2Vec, model weights, ufbx, three.js and other dependencies
+retain their respective licenses. See THIRD_PARTY_NOTICES.md and
+docs/architecture/source-and-license-boundaries.md for the boundaries.
