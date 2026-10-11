@@ -6,6 +6,17 @@
 
 **本 Pipeline 自有代码和文档采用 PolyForm Noncommercial 1.0.0，仅授权非商业用途；商业使用须取得权利人另行授权。** 许可正文见 [LICENSE.md](LICENSE.md)，具体范围见 [NOTICE](NOTICE)。
 
+## 下载源码
+
+在选定的父目录打开 PowerShell：
+
+```powershell
+git clone https://github.com/cc8887/Kimodo-Pipeline.git
+cd Kimodo-Pipeline
+```
+
+克隆后按[入门教程](docs/入门教程.md)安装环境并创建自己的 local 配置。模型、原版参考资产和生成资源需另行准备。
+
 ## 本机快速使用
 
 在本目录打开 PowerShell：
@@ -44,4 +55,4 @@ $KimodoPython = (& .venv-win\Scripts\python.exe -c "from tools.kimodo_pipeline.p
 
 资产范围与第三方条款见 [ASSET_LICENSE.md](ASSET_LICENSE.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。原工程三份声明与署名完整保留在 [licenses/source/](licenses/source/README.md)，其既有 MIT 授权与第三方许可继续适用于原材料。独立目录中的适用范围见 [来源与许可边界](docs/architecture/source-and-license-boundaries.md)。
 
-此 Git 仓库当前只有本地历史，没有配置远程。安装使用源码 editable 模式；wheel/离线安装包尚未作为交付形式验证。
+远程仓库为 [cc8887/Kimodo-Pipeline](https://github.com/cc8887/Kimodo-Pipeline)。安装使用源码 editable 模式；wheel/离线安装包尚未作为交付形式验证。
