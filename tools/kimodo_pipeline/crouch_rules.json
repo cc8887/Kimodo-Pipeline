@@ -1,0 +1,55 @@
+{
+  "extends": "directional_gait_rules.json",
+  "seed": 20261011,
+  "locomotionOverrides": {
+    "Crouch_Walk_Forward": {
+      "prompt": "A person walks forward steadily in a low crouch, taking even alternating steps with a consistent stance width. Each supporting foot stays planted on the ground while the other foot steps forward.",
+      "direction": [0, 1], "headingDegrees": 0
+    },
+    "Crouch_Walk_Backward": {
+      "prompt": "A person walks backward steadily in a low crouch, taking even alternating steps with a consistent stance width. Each supporting foot stays planted on the ground while the other foot steps backward.",
+      "direction": [0, -1], "headingDegrees": 0
+    },
+    "Crouch_Walk_Left": {
+      "prompt": "A person is walking to their left at a steady pace in a low crouch, repeating complete alternating strides with coordinated arm swings.",
+      "direction": [1, 0], "headingDegrees": 0
+    }
+  },
+  "gaitClosure": {
+    "Crouch_Walk_Forward": {
+      "candidateCycles": 3, "fullBodyPhaseCycles": 2, "boundaryContextFrames": 0,
+      "fullBodyPhaseFractions": [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875],
+      "preserveReferenceHeading": true,
+      "supportAnchorCount": 4, "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3, "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als", "constrainHandOrientations": true,
+      "repairAfterGeneration": true, "finalRepairHarmonics": 3,
+      "repairRampFrames": 4, "repairCycleIndex": 1,
+      "minimumKneeBendDegrees": 15, "fitRegularization": 0.02,
+      "discoverySeconds": 4
+    },
+    "Crouch_Walk_Backward": {
+      "candidateCycles": 3, "fullBodyPhaseCycles": 2, "boundaryContextFrames": 0,
+      "fullBodyPhaseFractions": [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875],
+      "preserveReferenceHeading": true,
+      "targetPhaseHarmonics": 2,
+      "supportAnchorCount": 4, "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3, "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als", "constrainHandOrientations": true,
+      "repairAfterGeneration": true, "finalRepairHarmonics": 3,
+      "repairRampFrames": 4, "repairCycleIndex": 1,
+      "minimumKneeBendDegrees": 15, "fitRegularization": 0.02,
+      "discoverySeconds": 4
+    },
+    "Crouch_Walk_Left": {
+      "candidateCycles": 3, "fullBodyPhaseCycles": 3, "boundaryContextFrames": 1,
+      "supportAnchorCount": 4, "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3, "maximumAnchorCorrectionMeters": 0.15,
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true, "finalRepairHarmonics": 3,
+      "repairRampFrames": 4, "repairCycleIndex": 1,
+      "minimumKneeBendDegrees": 15, "fitRegularization": 0.02,
+      "discoverySeconds": 4, "repairMirroredCycle": true
+    }
+  }
+}

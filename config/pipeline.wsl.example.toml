@@ -1,0 +1,13 @@
+[paths]
+# Keep this repository and the consumer on a shared Windows filesystem.
+# Relative paths are resolved against this repository; ~/ is the Linux home.
+asset_root = "workspace/als"
+reference_root = "workspace/als"
+work_root = "workspace/runs"
+project_root = "../Godot-Locomotion"
+kimodo_repo = "~/Github/kimodo"
+python = "~/Github/kimodo/.venv/bin/python"
+runtime_python = ".venv-win/Scripts/python.exe"
+godot = "../Godot-Locomotion/Godot_v4.7.2-stable_mono_win64/Godot_v4.7.2-stable_mono_win64_console.exe"
+# Set KIMODO_DOTNET to the WSL form of the Windows SDK executable (see tutorial).
+dotnet = "${KIMODO_DOTNET}"

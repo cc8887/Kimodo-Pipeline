@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kimodo-als-pipeline"
+version = "0.1.0"
+description = "Independent Kimodo authoring, ALS resource production and Godot validation tools"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "scipy>=1.11", "ufbx==0.0.5"]
+
+[project.scripts]
+kimodo-pipeline = "tools.produce_als_resources:main"
+kimodo-viewer = "tools.start_motion_viewer:main"
+kimodo-reference = "tools.reference_snapshot:main"
+
+[tool.setuptools.packages.find]
+include = ["tools", "tools.kimodo_pipeline", "tools.unreal"]
+
+[tool.setuptools.package-data]
+"tools.kimodo_pipeline" = ["*.json"]

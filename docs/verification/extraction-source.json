@@ -1,0 +1,308 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "52c7ad514b090e22d2c248eb0c5dfffeea55f95d",
+  "files": [
+    {
+      "path": "tools/kimodo_pipeline/__init__.py",
+      "sha256": "dd9f2dc70100a3994ce8ac82073aa9ec9347562d2d035cdd553bf8311e9c0b6d"
+    },
+    {
+      "path": "tools/kimodo_pipeline/air_rules.json",
+      "sha256": "d806eca0c2cf407b409d820c44c7181eef1fb2d93763f949e2ba7352da67118d"
+    },
+    {
+      "path": "tools/kimodo_pipeline/air.py",
+      "sha256": "d6fa4246c1274fe3799c13577f8bac039cd1c35791550c5025b0135bfcb9868b"
+    },
+    {
+      "path": "tools/kimodo_pipeline/als_reference.py",
+      "sha256": "ab2e48d8324f57dba5f4d39788e352ccdd6afeb0f445135287efeb1125714a13"
+    },
+    {
+      "path": "tools/kimodo_pipeline/batch.py",
+      "sha256": "84d457f46a8d4854fc4dd1e6b6a7e7189d9f06ca52a73d1830ada1f4e9632501"
+    },
+    {
+      "path": "tools/kimodo_pipeline/crouch_rules.json",
+      "sha256": "aaefb36c7165d97b77523e7a2bd2ff0614029922799319fee100235b0a97a90c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/derived.py",
+      "sha256": "351859751f22bcc939019d77cfb889388d68eccea51ae9fd5a83641549159773"
+    },
+    {
+      "path": "tools/kimodo_pipeline/directional_gait_rules.json",
+      "sha256": "d44eb0c8f7bc553b5354c4a632be587ed698a57abca76d108a94b9680d7d9513"
+    },
+    {
+      "path": "tools/kimodo_pipeline/full_pipeline.py",
+      "sha256": "25c40730ce5893452b38ec6c90aad826bf844ba2765cfca216eac7c3d54f5e31"
+    },
+    {
+      "path": "tools/kimodo_pipeline/gait_closure_rules.json",
+      "sha256": "952777717f779ba69749d21867491a624931e9076e13a514a40de670adf6d643"
+    },
+    {
+      "path": "tools/kimodo_pipeline/gait_constraints.py",
+      "sha256": "592501456052bb900c12dfcb275fac73c944cfa10ee99efc2e0a81579bd7d485"
+    },
+    {
+      "path": "tools/kimodo_pipeline/gait_repair_feedback_rules.json",
+      "sha256": "c5239cb2deaf00a61a6ce63220ec513a41e4ef2c35a1591025d603a36b7775c3"
+    },
+    {
+      "path": "tools/kimodo_pipeline/gait.py",
+      "sha256": "d6f7e91a21a2efffcc57a307a8aaed778f011ea6efde37efb647e49f9ec220a0"
+    },
+    {
+      "path": "tools/kimodo_pipeline/graph.py",
+      "sha256": "a37a6aacf82fff05f18d09c87771df82f180882ce444e433496a49d7f79d3b1a"
+    },
+    {
+      "path": "tools/kimodo_pipeline/locomotion_quality.py",
+      "sha256": "c90e13f876d9472e8cda1d8f3a6ea8cc70331565fce8e2f5ff540914a599117a"
+    },
+    {
+      "path": "tools/kimodo_pipeline/mantle_contacts.py",
+      "sha256": "8baaef1b2f402c21f6ece711781aab92c712db35106d186e9ef92c6c66a3356c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/mantle_curve_contract.py",
+      "sha256": "612950fd91ab832c200e00af2637e3354e5e9df0bbd7fe60d6ae4f859e5ec226"
+    },
+    {
+      "path": "tools/kimodo_pipeline/mantle_hand_repair.py",
+      "sha256": "a017934224e79ee39c34559222b8b04450d07f3980175c011d370dd344dbb5f3"
+    },
+    {
+      "path": "tools/kimodo_pipeline/mantle.py",
+      "sha256": "128c9be3c68d061a16ae6a50e25c7d3e87008bf3009cfdbbe7a83c77c6af915a"
+    },
+    {
+      "path": "tools/kimodo_pipeline/motion.py",
+      "sha256": "7165dd58491393fb1ea444f8ff7279b6863283bde0888add84f28c9b114b96f1"
+    },
+    {
+      "path": "tools/kimodo_pipeline/non_prop_rules.json",
+      "sha256": "0eb404022c85b70fd15e1358bff7d296c133f14c2bbb54cb4d934bb6d545752d"
+    },
+    {
+      "path": "tools/kimodo_pipeline/offline_fbx.py",
+      "sha256": "42fb3e4a93f31ab67b6d73816d534f30bff541e76c7a9a308cfbf2aa40bf9cf3"
+    },
+    {
+      "path": "tools/kimodo_pipeline/offline_pipeline.py",
+      "sha256": "ac542a6650ececcc75a43ca02023e637ec45332e963dae670b46bffe689d83fa"
+    },
+    {
+      "path": "tools/kimodo_pipeline/offline_repair.py",
+      "sha256": "b19b781e0d2e165d6839c401a966fd27ca01b434948235ec183f5ca68d13e44c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/offline_retarget.py",
+      "sha256": "cf0312fe5cc6d138722ba98cc9d4ff389d9f7f8dfd224e1f0a7786d166fcc4c1"
+    },
+    {
+      "path": "tools/kimodo_pipeline/periodic_repair.py",
+      "sha256": "2a633b7b231d20526054664a5c85befc5440273dc269b5f345bbecfc7b94302c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/probe_root_ownership.py",
+      "sha256": "8f2e771d50b48929e26de9a3d2517da5c3894fc71c5b3d0649e4ac34a206e278"
+    },
+    {
+      "path": "tools/kimodo_pipeline/production_rules.json",
+      "sha256": "251d55b80872e00d5ca387dc536d73b918e1a4692e1cfb489e3f51efeec9ebea"
+    },
+    {
+      "path": "tools/kimodo_pipeline/publish.py",
+      "sha256": "f0408049999f126908efdb7fafb11a380950435f6cf03468d1eedd35a6a5dd4d"
+    },
+    {
+      "path": "tools/kimodo_pipeline/README.md",
+      "sha256": "58d05a9eab8ccd2eb3cf6926f2fe17f045197f49d36fca8248df7da1aa9b37e2"
+    },
+    {
+      "path": "tools/kimodo_pipeline/root_curves.py",
+      "sha256": "1fc8888ce2466e051ace3a00781bf27b89981b63a0959402334e5c2aa8d3f9d1"
+    },
+    {
+      "path": "tools/kimodo_pipeline/root_ownership.py",
+      "sha256": "ca837c9b8cbabb0301d533bddf906ec56390f95c5b5aaf42b7008ff3e306632f"
+    },
+    {
+      "path": "tools/kimodo_pipeline/run_rules.json",
+      "sha256": "647644af159b019138c6dbac38303fadfcbc3458ed7a0f46e57cb3995e733c90"
+    },
+    {
+      "path": "tools/kimodo_pipeline/runner.py",
+      "sha256": "eb7d713289d6086f26ab7269308015c982a3751ade7fc0bb611883c5b6e7f912"
+    },
+    {
+      "path": "tools/kimodo_pipeline/scope.py",
+      "sha256": "01f11ffe7a1d5bd38e430082b265146db3148c373def0d1b97aab83939404ce4"
+    },
+    {
+      "path": "tools/kimodo_pipeline/target_cleanup.py",
+      "sha256": "4b0a449d97db5f4048f2674ed89ead07bd189be53a26e1cc1d980ae6442467cc"
+    },
+    {
+      "path": "tools/kimodo_pipeline/target_gait.py",
+      "sha256": "7ad56eb3af7d388fc452182e361d6b0f78c6649f3374d477b0a539b7aa0a5f4e"
+    },
+    {
+      "path": "tools/kimodo_pipeline/target_phase.py",
+      "sha256": "89602f0d7c48294e535639f4a9be87a9f9198745a5c3f5456999f40927e36f07"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_air.py",
+      "sha256": "60ef2d2fbbf64d28c0fcf3ff9b2387f5091640a1428cf8ea51a50b8fac43d461"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_als_reference.py",
+      "sha256": "bc8292c176622c92ebf24f44096b44a643d954fb64b48ada20e4cb650a3eb5a2"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_batch.py",
+      "sha256": "0a7e095b5a460b2206094784bc88be7e0811ba3720a418a0a110209f1821820d"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_crouch_pipeline.py",
+      "sha256": "ed04d37a24735f27a975ea79d0f01fd9a868afd69d3fc9952a6c8377fdbb8e6b"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_derived.py",
+      "sha256": "71272607da146f9406c3dd2c116a3b228ccfe36e79b72f6b04cf8880cad74ca0"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_directional_gait.py",
+      "sha256": "2eeaf7295ae3343961d4c62037807c37a5392b60db6a5f79a69039788cbeae43"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_final_fbx.py",
+      "sha256": "94da516bde31024adb6da4e4355b07559a210d02a41fcaf657b602ca4c2f1430"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_gait_constraints.py",
+      "sha256": "6e0d700941c4899569a392239d7b9008b1a1c7508515b67fe43af4dec7df0e2c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_gait_pipeline.py",
+      "sha256": "5406fb795d8c607bdeb40a0dd021dd9b43b80635a1804031b697fdf0adbc5e5e"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_gait.py",
+      "sha256": "53753273d1ab719129f64c0811168690c375f39ffeafa1f24466cade009d0d9f"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_locomotion_quality.py",
+      "sha256": "646bd385346d9ae3b4364ebcb273be1f4667f8f569e7637f82e4113a52f22566"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_mantle_contacts.py",
+      "sha256": "540a98fe6f7de0cce2d7874ce919da44f176165856308f080ccca0c605445100"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_mantle_curve_contract.py",
+      "sha256": "ed360d6a223dd01582cf28eef25ece5bdc04c78d202c45768bf92f5d7eb9f039"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_mantle_hand_repair.py",
+      "sha256": "a5908679140b728c4713eaece7b832e0f356ebce0ed01cfb7a1bfc63c36a495f"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_mantle.py",
+      "sha256": "e14fa095f3e554a2dbcd7a541d44875c8c6ad5f6f274422f9aa1a86e757f7ba2"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_offline_pipeline.py",
+      "sha256": "4438166a8259230b4e1fc9796498ebcb06e7de10f3835af664a8059cee632c82"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_offline_repair.py",
+      "sha256": "daeac5f3f54de115e4b1529b77b5fae7d97549021a2fab4de92c3e2a6c44686c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_periodic_repair.py",
+      "sha256": "9997c88c28288778dc199489d4473d1440def5657b289879ab44243122c44180"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_pipeline.py",
+      "sha256": "547173d037b61957f99d63d950b8a91ac9ad4dbd499dd7d51259601eaedbdf78"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_publish.py",
+      "sha256": "ef23ebb07da304bcf51d7fbfcb88298937d5a97b558f21857db46ce6fdbca63c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_root_curves.py",
+      "sha256": "5fd15be14e9dbea07dd9800cfdbba9feb66f7dc2203d3df765d95e288bd2e4a5"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_root_ownership.py",
+      "sha256": "49da53c3997697ebb4e5fbb65be9b0c1362ad6d2d18e33715b10554a61b0f979"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_run_pipeline.py",
+      "sha256": "e8fea2b51a273b65e57943cbae713267fe1e1c78082f3b854c25b2ed6b9074f4"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_target_cleanup.py",
+      "sha256": "da3aad59db3f90f9ae577ac514f048a0a9a53d7f90f5bf3fc782023baa9567fe"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_target_gait.py",
+      "sha256": "422e35e4717a4b5a4c0b9f4bcc18df73054afee865c10af533ba22dad395566c"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_target_phase.py",
+      "sha256": "bcabd071eafd9ced9de34f68f97f51aec1611ade8f9c6eb6b5aa176b11f34f2e"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_text_embeddings.py",
+      "sha256": "c4de6b7bd67588df153d68e438890226aa541ded4ccf5eff695b97f752dc418a"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_upper_body.py",
+      "sha256": "4fc864fbf3266672d43f57afd0f98d827c9d8d800258ca762e96e038a88a596e"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_viewer_export.py",
+      "sha256": "6c9066c145ce5acba09a2ae35805513afca3c0d2439f2c9736050d81151ee678"
+    },
+    {
+      "path": "tools/kimodo_pipeline/test_viewer_pack.py",
+      "sha256": "2bd96d62d1f80ebf74d8da19a4544c9d6de43e8c0d052653b98be0862fcfbab0"
+    },
+    {
+      "path": "tools/kimodo_pipeline/text_embeddings.py",
+      "sha256": "594d153a2f84f846c55ca925231a3ea11358f062463fccad9361408c8b6b6515"
+    },
+    {
+      "path": "tools/kimodo_pipeline/upper_body.py",
+      "sha256": "21446b8ad1f8e7ddc779c1dc7b1e617d7a88c5d443f1200f44ed9f30fd671f99"
+    },
+    {
+      "path": "tools/kimodo_pipeline/viewer_export.py",
+      "sha256": "e504bb5e1c9f915a4eca27f6c88b00a218974b3197cbfc77d7819f78d1c2070b"
+    },
+    {
+      "path": "tools/kimodo_pipeline/viewer_pack.py",
+      "sha256": "29f046770cb36be03e3748987ec5c00c611fd89fc963cafe57df9a30d62f7a4b"
+    }
+  ],
+  "uncommittedSourceFiles": [
+    " M tools/kimodo_pipeline/README.md",
+    " M tools/kimodo_pipeline/derived.py",
+    " M tools/kimodo_pipeline/graph.py",
+    " M tools/kimodo_pipeline/publish.py",
+    " M tools/kimodo_pipeline/scope.py",
+    " M tools/kimodo_pipeline/target_gait.py",
+    " M tools/kimodo_pipeline/test_publish.py",
+    " M tools/kimodo_pipeline/test_target_gait.py",
+    " M tools/kimodo_pipeline/test_target_phase.py",
+    " M tools/produce_als_resources.py",
+    "?? tools/kimodo_pipeline/crouch_rules.json",
+    "?? tools/kimodo_pipeline/test_crouch_pipeline.py"
+  ]
+}

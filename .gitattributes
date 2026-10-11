@@ -1,0 +1,12 @@
+* text=auto eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.json -text whitespace=trailing-space,space-before-tab,cr-at-eol
+*.ps1 text eol=crlf
+*.sh text eol=lf
+*.npz binary
+*.fbx binary
+*.bvh -text
+# A unified patch uses a single space to mark an empty context line.
+*.patch -text whitespace=-blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kimodo Pipeline · Motion Viewer</title>
+<link rel="stylesheet" href="/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<header>
+  <div class="brand">Kimodo Pipeline · Motion Viewer</div>
+  <select id="batchSelect" title="生成批次" hidden></select>
+  <button id="refreshBtn" class="btn" type="button">刷新资源</button>
+  <select id="stageSelect" title="管线阶段"></select>
+  <button id="modeBtn" class="btn" type="button">A/B 对比</button>
+  <button id="chainBtn" class="btn" type="button">链路比对</button>
+  <label id="syncWrap" class="chk" hidden><input type="checkbox" id="syncAB" checked><span id="syncLabel"> A/B 同步</span></label>
+  <span class="muted small" id="serverInfo">assets/generated · 只读</span>
+</header>
+<div id="errBar" hidden></div>
+<div id="layout">
+  <aside id="sidebar">
+    <input id="fileSearch" type="text" placeholder="过滤文件名…">
+    <div id="chainCluster" hidden>
+      <select id="chainView" title="链路对照方式">
+        <option value="pipeline">当前批次 · 各生产阶段</option>
+        <option value="batches">不同批次 · 同一生产阶段</option>
+      </select>
+      <select id="compareBatch" title="对照批次" hidden></select>
+      <select id="comparePhase" title="跨批次生产阶段" hidden>
+        <option value="generated">生成候选</option>
+        <option value="master">周期处理／母动作</option>
+        <option value="target-retarget">目标重定向 raw</option>
+        <option value="target-root">水平分解 → Root</option>
+        <option value="target-runtime">ALS 原地 raw</option>
+        <option value="target-fbx">最终 FBX</option>
+      </select>
+      <input id="chainSearch" type="text" placeholder="过滤链路资源…">
+      <div class="muted small" id="chainMeta"></div>
+    </div>
+    <div id="stageMeta" class="muted small"></div>
+    <ul id="fileList"></ul>
+    <ul id="chainList" hidden></ul>
+  </aside>
+  <main id="main">
+    <div id="viewports">
+      <div class="vp active" id="vpA" data-slot="A">
+        <canvas id="canvasA"></canvas>
+        <div class="vp-label">A</div>
+        <div class="vp-badge" id="badgeA">（未加载）</div>
+      </div>
+      <div class="vp" id="vpB" data-slot="B" hidden>
+        <canvas id="canvasB"></canvas>
+        <div class="vp-label">B</div>
+        <div class="vp-badge" id="badgeB">（未加载）</div>
+      </div>
+    </div>
+    <div id="vpChain" hidden></div>
+    <div id="legend">
+      <span><i class="dot" style="background:#ff7a1a"></i>根骨骼 root/Root</span>
+      <span><i class="dot" style="background:#ff3d81"></i>骨盆 pelvis/Hips</span>
+      <span><i class="dot" style="background:#b44cff"></i>IK/虚拟骨 ik_*/VB_*</span>
+      <span><i class="dot" style="background:#35d96b"></i>脚 *foot*/ankle*</span>
+      <span><i class="dot" style="background:#ffd23d"></i>手 *hand*/wrist*</span>
+      <span><i class="dot" style="background:#38a9ff"></i>头 head</span>
+      <span>橙线 root · 粉线 pelvis · 白十字 O</span>
+    </div>
+    <div id="transport">
+      <button id="firstFrameBtn" class="btn" type="button">首帧</button>
+      <button id="playBtn" class="btn primary" type="button">暂停</button>
+      <input type="range" id="timeSlider" min="0" max="1" step="0.001" value="0">
+      <span id="timeText" class="mono">0.00 / 0.00 s</span>
+      <label class="chk">速度
+        <select id="speedSelect">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="loopChk" checked> 循环</label>
+      <label class="chk">显示约定
+        <select id="upSelect" title="默认按 ALS 原版 Z-up 显示；切换 Y-up 查看资产原始朝向">
+          <option value="z" selected>Z-up（ALS 原版）</option>
+          <option value="y">Y-up（原始数据）</option>
+        </select>
+      </label>
+      <button id="resetCamBtn" class="btn" type="button">重置视角</button>
+      <button id="exportOriginBtn" class="btn" type="button">导出原点对照</button>
+      <select id="clipSelect" hidden title="多 Take 时选择"></select>
+    </div>
+    <div id="infoPanel">
+      <div id="infoTabs">
+        <button class="tabBtn active" data-tab="summary" type="button">概要</button>
+        <button class="tabBtn" data-tab="disp" type="button">位移轨道</button>
+        <button class="tabBtn" data-tab="bones" type="button">关键骨骼</button>
+        <button class="tabBtn" data-tab="sidecar" type="button">溯源 JSON</button>
+      </div>
+      <div class="tabScroll">
+        <div class="tab" id="tab-summary"><div class="muted">尚未加载文件</div></div>
+        <div class="tab" id="tab-disp" hidden></div>
+        <div class="tab" id="tab-bones" hidden></div>
+        <div class="tab" id="tab-sidecar" hidden></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
