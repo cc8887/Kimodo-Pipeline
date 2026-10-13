@@ -13,7 +13,13 @@ SOURCE_FILES = ('src/Als.Core/Locomotion/AlsRefactoredStopRule.cs',
 
 def sha256(path):
     with Path(path).open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        try:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+        except AttributeError:  # Python 3.10 lacks hashlib.file_digest
+            digest = hashlib.sha256()
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+            return digest.hexdigest()
 
 
 def export_reference(project, output):
