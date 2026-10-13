@@ -207,6 +207,16 @@ def assemble_overlay_lower_body(jobs, rewritten, skeletons):
                 track[channel]=values if values else []
         previous=j.get('_rootOwnershipReport')
         rewritten[source]=target_root_and_ik(raw,skeletons[j['edition']],j)
+        if j.get('twistReconstructionPolicy'):
+            from .twist_reconstruction import TwistReconstruction, reconstruct
+            # Slot assembly can copy legacy leaf twist together with new body
+            # dependencies. Rebuild only the eight physical leaf rotations,
+            # then retain the independent final conformance gate below.
+            if not TwistReconstruction(skeletons[j['edition']]).assess(rewritten[source])['passed']:
+                rewritten[source],j['_targetTwistReport']=reconstruct(rewritten[source],skeletons[j['edition']])
+                if not j['_targetTwistReport']['passed']:
+                    raise ValueError('Post-overlay twist reconstruction failed: '+source)
+                j['_targetTwistReport']['repairStage']='after-overlay-slot-assembly'
         if previous:j['_rootOwnershipReport']['beforeOverlayAssembly']=previous
         j['_rootOwnershipReport']['canonicalBodyDependencies']=[dict(source=by_semantic[(j['edition'],name)],
             runtimeRawSemanticSha256=root_ownership.semantic_hash(rewritten[by_semantic[(j['edition'],name)]]))
@@ -269,7 +279,6 @@ def prepare_target_raw(j,v4,ref,index,*,factor_root=True):
         policy=None
     name=target_gait.asset_name(source)
     periodic=(policy and name in target_gait.PILOTS and
-              target_gait.PILOTS[name][1]!='sprint_acceleration' and
               target_gait.original_protocol()['assets'][target_gait.PILOTS[name][1]]['contactMode'] in ('flat_sole','toe'))
     if periodic:
         validate_gait_receipt(j)
@@ -277,7 +286,8 @@ def prepare_target_raw(j,v4,ref,index,*,factor_root=True):
         j['_targetPhaseInputRaw']=copy.deepcopy(result)
         try:
             result,phase,cleanup_report=repair_periodic_gait(result,skel,source,
-                phase_harmonics=j['contract'].get('targetPhaseHarmonics',3))
+                phase_harmonics=j['contract'].get('targetPhaseHarmonics',3),
+                source_gate=read_json(j['gaitValidationReceipt']['file']))
             j['_targetPhaseReport']=phase;j['_targetCleanupReport']=cleanup_report
             j['_targetPhaseRepairedRaw']=copy.deepcopy(result)
         except ValueError as error:
@@ -298,7 +308,34 @@ def prepare_target_raw(j,v4,ref,index,*,factor_root=True):
         except ValueError as error:
             if not j.get('_diagnosticConversion'):raise
             j['_targetCleanupReport']=dict(passed=False,error=str(error),applied=False)
+    if j.get('twistReconstructionPolicy'):
+        from .twist_reconstruction import reconstruct, POLICY as TWIST_POLICY
+        if j['twistReconstructionPolicy'] != TWIST_POLICY: raise ValueError('Unknown target twist policy')
+        result, j['_targetTwistReport'] = reconstruct(result, skel)
+        if not j['_targetTwistReport']['passed']: raise ValueError('Target twist reconstruction failed')
+        if j.get('_targetMantleRepairedRaw') is not None:
+            j['_targetMantleRepairedRaw'] = copy.deepcopy(result)
     return (target_root_and_ik(result,skel,j) if factor_root else result),skel
+
+
+def assess_target_twist(raw,skeleton,job,runtime_base=None,base_job=None):
+    """Assess the final pose in its declared absolute or additive-relative domain."""
+    from .twist_reconstruction import TwistReconstruction
+    plan=TwistReconstruction(skeleton);spec=job.get('contract',{}).get('targetAdditiveRebase')
+    if not spec:return plan.assess(raw)
+    from .additive_transition import sample_runtime_base
+    if (runtime_base is None or base_job is None or
+        runtime_base.get('source')!=spec['runtimeBaseSource'] or base_job['source']!=spec['runtimeBaseSource'] or
+        base_job['edition']!=job['edition']):
+        raise ValueError('Relative twist lacks its actual same-edition runtime base')
+    policy=base_job['contract']['originalEvaluation']
+    sampled,sampling=sample_runtime_base(runtime_base,spec['runtimeBaseFrame'],
+        sequence_play_length=policy.get('sequencePlayLength',runtime_base['playLength']),
+        interpolation=policy.get('interpolation','Linear'))
+    report=plan.assess_relative(raw,sampled,spec.get('correctionBoneRoots'))
+    report['runtimeBase']=dict(source=spec['runtimeBaseSource'],frame=spec['runtimeBaseFrame'],
+        rawSemanticSha256=root_ownership.semantic_hash(runtime_base),sampling=sampling)
+    return report
 
 
 def prepare_target_closure(jobs,v4,ref,index):
@@ -470,6 +507,13 @@ def stage(retarget,output,*,diagnostic=False):
             gait_files.extend(folder.glob('*.json'))
             if not report['passed'] and not diagnostic:
                 raise ValueError('Target mantle gate failed for '+source+'; evidence: '+str(folder/'quality.json'))
+        if j.get('locomotionPostureReceipt') or j['contract'].get('targetLocomotionPosturePolicy'):
+            from .locomotion_style import validate_delivery
+            validate_delivery(j)
+            posture_path=output/'locomotion-posture'/(hashlib.sha256(source.encode()).hexdigest()+'.json')
+            posture_path.parent.mkdir(exist_ok=True)
+            shutil.copy2(j['locomotionPostureReceipt']['file'],posture_path)
+            gait_files.append(posture_path)
         if j.get('upperBodyValidationReceipt'):
             upper_path=output/'upper-body'/(hashlib.sha256(source.encode()).hexdigest()+'.json')
             upper_path.parent.mkdir(exist_ok=True)
@@ -529,6 +573,17 @@ def stage(retarget,output,*,diagnostic=False):
     ownership_files=[];ownership_receipts=[];extracted_curves=[];final_fbx_jobs=[]
     for source,j in jobs.items():
         result=rewritten[source]
+        if j.get('_targetTwistReport'):
+            # Overlay lower-body assembly above can change a pose table after
+            # retarget/root factoring. Bind and assess the final physical pose.
+            skel=ref if j['edition']=='refactored' else v4
+            spec=j['contract'].get('targetAdditiveRebase');base=spec['runtimeBaseSource'] if spec else None
+            twist_report=assess_target_twist(result,skel,j,rewritten[base] if base else None,jobs[base] if base else None)
+            if not twist_report['passed']:raise ValueError('Final assembled twist conformance failed: '+source)
+            twist_report.update(source=source,finalRawSemanticSha256=root_ownership.semantic_hash(result))
+            j['_targetTwistReport']=twist_report
+            path=output/'target-twist'/(hashlib.sha256(source.encode()).hexdigest()+'.json')
+            path.parent.mkdir(exist_ok=True);write_json(path,twist_report);gait_files.append(path)
         curve=root_curves.export(output,result,j)
         if curve:motion_curves.append(curve)
         identifier=hashlib.sha256(source.encode()).hexdigest()
@@ -666,6 +721,8 @@ def stage(retarget,output,*,diagnostic=False):
                   file='target-mantle/'+hashlib.sha256(source.encode()).hexdigest()+'/quality.json') for source,report in mantle_reports.items()],
               targetAirChecks=[dict(source=source,policy=report['policy'],passed=report['passed'],
                   file='target-air/'+hashlib.sha256(source.encode()).hexdigest()+'/quality.json') for source,report in air_reports.items()],
+              targetTwistChecks=[dict(source=j['source'],policy=j['_targetTwistReport']['policy'],passed=j['_targetTwistReport']['passed'],
+                  file='target-twist/'+hashlib.sha256(j['source'].encode()).hexdigest()+'.json') for j in jobs.values() if j.get('_targetTwistReport')],
               authoringTrajectories=authoring_trajectories,rootOwnershipPolicy=root_ownership.POLICY,
               rootOwnershipReceipts=ownership_receipts,extractedRootMotionCurves=extracted_curves,
               finalFbxStatus='pending-native-bake',files=[])
@@ -696,6 +753,8 @@ def stage(retarget,output,*,diagnostic=False):
     pack['runtimeAssetIntegrityFiles']=runtime_asset_integrity_files(pack['files'],pack['assetRoot'],manifest)
     if 'mantleCurveContract' in pack:
         validate_mantle_curve_delivery(output/'resource-pack.json',pack)
+    if pack['targetTwistChecks']:
+        validate_twist_delivery(output/'resource-pack.json', pack)
     write_json(output/'resource-pack.json',pack)
     from .viewer_pack import register_production_pack
     register_production_pack(output/'resource-pack.json')
@@ -829,6 +888,46 @@ def validate_mantle_curve_delivery(pack_path,pack):
             value.get('rootInputsSha256')!=file_hash(paths[2])):
         raise ValueError('Mantle curve contract binds different final inputs')
     return validate(value,read_json(paths[1]),read_json(paths[2]))
+
+
+def validate_twist_delivery(pack_path, pack):
+    """Recompute twist conformance from the final pose, not a claimed pass."""
+    from .twist_reconstruction import POLICY as TWIST_POLICY
+    folder = Path(pack_path).resolve().parent
+    jobs = read_json(pack['nativeRetargetBundle'])['jobs']
+    if any(j.get('twistReconstructionPolicy') and j['twistReconstructionPolicy'] != TWIST_POLICY for j in jobs):
+        raise ValueError('Unknown target twist policy')
+    expected = {j['source'] for j in jobs if j.get('twistReconstructionPolicy') == TWIST_POLICY}
+    checks = pack.get('targetTwistChecks', [])
+    if len(checks) != len(expected) or {c['source'] for c in checks} != expected:
+        raise ValueError('Missing complete per-asset twist gates')
+    index = read_json(folder/'config/refactored_animation_sources.json')
+    v4 = read_json(CONFIG/'v4_recovery_movement_source_inputs.json')['skeletons'][0]
+    ref = index['skeletons']['/ALS/ALS/Character/SK_Als.SK_Als']
+    by_source = {j['source']: j for j in jobs}
+    for check in checks:
+        path = (folder/check['file']).resolve()
+        if not path.is_relative_to(folder): raise ValueError('Twist gate path escapes pack')
+        raw_path = folder/'root-ownership'/hashlib.sha256(check['source'].encode()).hexdigest()/'runtime.raw.json'
+        job=by_source[check['source']];spec=job.get('contract',{}).get('targetAdditiveRebase')
+        base_path=None
+        if spec:
+            if spec['runtimeBaseSource'] not in by_source:raise ValueError('Missing relative twist runtime base')
+            base_path=folder/'root-ownership'/hashlib.sha256(spec['runtimeBaseSource'].encode()).hexdigest()/'runtime.raw.json'
+        for payload in (path, raw_path, *([base_path] if base_path else [])):
+            uri = 'res://'+payload.relative_to(ROOT).as_posix()
+            entries = [e for e in pack['files'] if e['path'] == uri]
+            if not payload.is_file() or len(entries) != 1 or entries[0]['sha256'] != file_hash(payload):
+                raise ValueError('Missing or changed twist payload')
+        raw = read_json(raw_path); report = read_json(path)
+        skeleton = ref if by_source[check['source']]['edition'] == 'refactored' else v4
+        actual=assess_target_twist(raw,skeleton,job,read_json(base_path) if base_path else None,
+            by_source[spec['runtimeBaseSource']] if spec else None)
+        if not check['passed'] or not actual['passed'] or check['policy'] != actual['policy'] or \
+           report != dict(**actual, source=check['source'], finalRawSemanticSha256=root_ownership.semantic_hash(raw)):
+            raise ValueError('Final target twist conformance failed')
+    policies=sorted({check['policy'] for check in checks})
+    return dict(policy='per-asset-twist-evaluation-domain-v1',assetPolicies=policies,assets=len(checks),passed=True,productionReady=False)
 
 
 def validate_mantle_pack(pack_path,pack):

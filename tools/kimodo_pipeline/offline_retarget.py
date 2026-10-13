@@ -10,9 +10,10 @@ from scipy.spatial.transform import Rotation
 from .motion import fk
 from .publish import world_pose
 from .gait_constraints import _rotation_between
+from .twist_reconstruction import reconstruct
 
 BASIS = np.array([[1.,0,0],[0,0,1],[0,1,0]])
-POLICY = 'soma77-als-neutral-aligned-offline-v1'
+POLICY = 'soma77-als-neutral-aligned-offline-v2'
 
 
 def mapping():
@@ -84,8 +85,8 @@ def convert(motion, rig, skeleton, source, timing):
             world[:,i] = delta@aligned[i]
         elif parent<0: world[:,i] = aligned[i]
         else:
-            # Twist bones and IK containers inherit their parent's authored
-            # delta. Root ownership regenerates IK effectors from final FK.
+            # Unmapped branches initially inherit their parent. Physical
+            # twist is reconstructed below; IK comes from final root-owned FK.
             world[:,i] = world[:,parent]@aligned[parent].T@aligned[i]
         local[:,i] = world[:,i] if parent<0 else world[:,parent].transpose(0,2,1)@world[:,i]
     raw = dict(source=source, skeletonSource=skeleton['source'], **timing, tracks=[])
@@ -96,9 +97,11 @@ def convert(motion, rig, skeleton, source, timing):
             position = motion['root_positions']@BASIS.T*(100*scale)
         raw['tracks'].append(dict(bone=name,positions=position.tolist(),
             rotations=Rotation.from_matrix(local[:,i]).as_quat().tolist(),scales=[ref['scale']]))
+    raw, twist_report = reconstruct(raw, skeleton)
+    if not twist_report['passed']: raise ValueError('Retarget twist reconstruction failed')
     report = dict(policy=POLICY,sourceUnits='m Y-up',targetUnits='cm Z-up',physicalBones=len(names),
         mappedBones=bone_map,unmappedBones=[n for n in names if n.lower() not in bone_map],
         uniformScale=float(scale),neutralAlignment='T-pose segment directions; immutable ALS bind offsets',
-        timingPreserved=True,productionReady=False,
+        timingPreserved=True,twistReconstruction=twist_report,productionReady=False,
         limitation='angular retarget; gait/sole contact and final-skin acceptance are independent and can fail')
     return raw,report

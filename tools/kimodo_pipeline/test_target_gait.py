@@ -43,6 +43,36 @@ class TargetGaitTests(unittest.TestCase):
         self.assertLess(np.median(np.linalg.norm(proper[...,:2],axis=-1)),
                         np.median(np.linalg.norm(wrong[...,:2],axis=-1)))
 
+    def test_sprint_native_speed_and_forefoot_support_are_required(self):
+        from .target_gait import _sole_geometry
+        row, report = self.original('sprint')
+        self.assertTrue(report['passed'])
+        self.assertEqual('toe', row['contactMode'])
+        self.assertEqual(600., report['expectedSpeedCmS'])
+        self.assertEqual(19, row['raw']['sampledKeyCount'])
+        self.assertAlmostEqual(.6, row['raw']['playLength'])
+        self.assertEqual([0.4, 0.4], row['flatHeightCm'])
+        skeleton = row['skeleton']
+        for speed, expected in ((600., True), (500., False), (650., False)):
+            with self.subTest(speed=speed):
+                points, velocity, _ = _sole_geometry(row['raw'], skeleton, speed)
+                toe = (np.abs(points[:, :, 1, 2]) <= .4) & (
+                    np.linalg.norm(velocity[:, :, 1, :2], axis=-1) <= 25.)
+                self.assertEqual(expected, bool(np.all(toe.sum(axis=0) >= 3)))
+        # Raising the body cannot turn absent near-ground evidence into a pass.
+        raised = copy.deepcopy(row['raw'])
+        pelvis = next(t for t in raised['tracks'] if t['bone'].lower() == 'pelvis')
+        for point in pelvis['positions']:
+            point[2] += 10.
+        damaged = analyze_target_gait(raised, skeleton, row['source'])
+        self.assertFalse(damaged['passed'])
+        for side in ('left', 'right'):
+            support = next(c for c in damaged['checks'] if c['check'] == side+'_stable_support')
+            sliding = next(c for c in damaged['checks'] if c['check'] == side+'_independent_near_ground_sliding')
+            self.assertFalse(support['passed'])
+            self.assertFalse(sliding['passed'])
+            self.assertEqual(0, sliding['samples'])
+
     @classmethod
     def setUpClass(cls):
         cls.protocol = original_protocol()

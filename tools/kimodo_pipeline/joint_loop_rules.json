@@ -1,0 +1,55 @@
+{
+  "extends": "modular_locomotion_rules.json",
+  "motionScope": [
+    "Sprint",
+    "Sprint_Acceleration"
+  ],
+  "locomotionPosture": {
+    "policy": "locomotion-idle-forearm-v2",
+    "bodyMotionGain": 0.15,
+    "forearmMotionGain": 0.85,
+    "forearmSwingDegrees": 22.0,
+    "elbowRestDegrees": 45.0,
+    "referenceFraction": 0.5,
+    "stanceMode": "standing",
+    "forearmSwing": false,
+    "limits": {
+      "torsoForwardDegrees": 8.0,
+      "neckForwardDegrees": 8.0,
+      "headDownDegrees": 8.0,
+      "armAbductionDegrees": 12.0,
+      "upperArmMotionDegrees": 0.05,
+      "minimumHandTravelMeters": 0.08
+    }
+  },
+  "loopCrops": {
+    "Sprint": {
+      "source": "posture:candidate:Sprint",
+      "contactReference": "reference:Sprint:native-als",
+      "startFrame": 18,
+      "endFrameInclusive": 36,
+      "harmonics": 3,
+      "contactPaddingFrames": 1,
+      "contactRampFrames": 3,
+      "contactMinimumKneeBendDegrees": 5,
+      "jointContactSeam": true,
+      "jointMaximumEvaluations": 400,
+      "jointSeamWeight": 3.0,
+      "jointSupportWeight": 10.0,
+      "jointOptimizeSharedAnchor": true,
+      "jointOptimizePelvis": true
+    },
+    "Sprint_Acceleration": {
+      "source": "posture:candidate:Sprint_Acceleration",
+      "contactReference": "reference:Sprint_Acceleration:native-als",
+      "startFrame": 18,
+      "endFrameInclusive": 36,
+      "harmonics": 3,
+      "contactPaddingFrames": 1,
+      "contactRampFrames": 3,
+      "contactMinimumKneeBendDegrees": 15,
+      "jointContactSeam": true,
+      "jointMaximumEvaluations": 180
+    }
+  }
+}

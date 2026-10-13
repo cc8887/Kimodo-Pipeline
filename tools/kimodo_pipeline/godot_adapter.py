@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import datetime
 from .graph import read_json
 from .runner import write_json, file_hash
-from .publish import ROOT, finalize_requests, validate_mantle_curve_delivery
+from .publish import ROOT, finalize_requests, validate_mantle_curve_delivery, validate_twist_delivery
 
 
 def verify_runtime(pack, output, godot, dotnet, python, *, runtime_cases=None):
@@ -15,6 +15,14 @@ def verify_runtime(pack, output, godot, dotnet, python, *, runtime_cases=None):
     report=output/'runtime-result.json'
     if report.exists():raise ValueError('Runtime evidence already exists; use a fresh output directory')
     selected=read_json(pack)
+    if selected.get('targetTwistChecks'):
+        try:
+            assessment = validate_twist_delivery(pack, selected)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            write_json(report, dict(status='runtime_failed', pack=str(pack), productionReady=False, activated=False,
+                checks=[dict(name='twist-reconstruction-contract', passed=False, reason=str(error))]))
+            raise ValueError('Twist reconstruction preflight failed; evidence: ' + str(report)) from error
+        write_json(output/'twist-reconstruction-contract.json', assessment)
     if selected.get('targetAirChecks') or selected.get('airPipelineContract'):
         try:
             from .air import validate_pack as validate_air_pack
@@ -38,6 +46,8 @@ def verify_runtime(pack, output, godot, dotnet, python, *, runtime_cases=None):
         env.pop(key,None)
     env['ALS_RESOURCE_PACK_PATH']=resource
     checks=[]
+    if selected.get('targetTwistChecks'):
+        checks.append(dict(name='twist-reconstruction-contract', passed=True, report=str(output/'twist-reconstruction-contract.json')))
     if selected.get('targetAirChecks') or selected.get('airPipelineContract'):
         checks.append(dict(name='air-pipeline-contract',passed=True,report=str(output/'air-pipeline-contract.json')))
     if selected.get('targetMantleChecks') or selected.get('mantleCurveContract'):

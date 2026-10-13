@@ -11,7 +11,61 @@ from scipy.ndimage import gaussian_filter1d, maximum_filter1d
 from scipy.spatial.transform import Rotation, Slerp
 
 from . import gait, motion
-from .gait_constraints import solve_foot_ik
+from .gait_constraints import solve_foot_ik, _rotation_between
+
+
+class _CorrectionBudget:
+    """Accumulate path lengths on each frame/element, never net displacements."""
+
+    def __init__(self, rig, period, rotation, ankle, root):
+        self.rig, self.period = rig, period
+        self.paths = {key: np.zeros_like(value, dtype=float) for key, value in
+                      zip(('rotationDegrees', 'ankleMeters', 'rootMeters'), (rotation, ankle, root))}
+        self.stages = []
+        self.add('periodic_fit_and_contact_ik', rotation, ankle, root)
+
+    def _peak(self, key, values):
+        index = np.unravel_index(np.argmax(values), values.shape)
+        result = dict(value=float(values[index]), frame=int(index[0]), phase=int(index[0] % self.period))
+        if key == 'rotationDegrees':
+            result['bone'] = self.rig['jointNames'][index[1]]
+        elif key == 'ankleMeters':
+            result['side'] = ('left', 'right')[index[1]]
+        return result
+
+    def add(self, name, rotation, ankle, root):
+        values = dict(zip(self.paths, (rotation, ankle, root)))
+        for key, value in values.items():
+            if value.shape != self.paths[key].shape or not np.isfinite(value).all() or np.any(value < 0):
+                raise ValueError('Invalid per-frame correction budget')
+            self.paths[key] += value
+        self.stages.append(dict(stage=name, peaks={key: self._peak(key, value) for key, value in values.items()}))
+
+    def add_motion(self, name, before, after):
+        delta = after['local_rot_mats'] @ before['local_rot_mats'].swapaxes(-1, -2)
+        rotation = np.rad2deg(np.linalg.norm(Rotation.from_matrix(delta.reshape(-1, 3, 3)).as_rotvec(),
+                                            axis=-1)).reshape(delta.shape[:2])
+        before_points = motion.fk(before['local_rot_mats'], before['root_positions'], self.rig)[1]
+        after_points = motion.fk(after['local_rot_mats'], after['root_positions'], self.rig)[1]
+        feet = [self.rig['jointNames'].index(side+'Foot') for side in ('Left', 'Right')]
+        self.add(name, rotation, np.linalg.norm(after_points[:, feet]-before_points[:, feet], axis=-1),
+                 np.linalg.norm(after['root_positions']-before['root_positions'], axis=-1))
+
+    def report(self, legacy_sum):
+        return dict(policy='same-frame-element-correction-path-v1', frameSpace='exported-motion',
+                    rotationScope='periodic fit plus seam and stance; contact IK uses foot/root/pitch budgets',
+                    peaks={key: self._peak(key, value) for key, value in self.paths.items()},
+                    legacyConservativeSum=dict(legacy_sum), stages=self.stages.copy())
+
+    def enforce(self, limits, legacy_sum, context):
+        report = self.report(legacy_sum)
+        report['limits'] = dict(limits)
+        if any(report['peaks'][key]['value'] > limit for key, limit in limits.items()):
+            error = ValueError(f'Combined periodic and {context} correction exceeds the original correction bounds: '
+                               f"{report['peaks']}")
+            error.correction_budget = report
+            raise error
+        return report
 
 
 def _fit(values, output_phase, harmonics, regularization=.002):
@@ -37,6 +91,64 @@ def _ease(x):
     return x*x*x*(10+x*(-15+6*x))
 
 
+def _fade_stance_residual(original_positions, original_rotations, targets, rotations, stance, ramp_frames):
+    """Fade boundary corrections while preserving the observed swing trajectory.
+
+    Blending a flying foot toward an old stationary contact anchor keeps pulling
+    it backwards as the body advances. Fade the *correction at the support
+    boundary* instead. Actual support samples are left exactly as authored; an
+    overlap between two ramps interpolates their bounded residuals.
+    """
+    count = len(stance)
+    frames = np.arange(count)
+    left = np.maximum.accumulate(np.where(stance, frames, -1))
+    right = np.minimum.accumulate(np.where(stance, frames, count)[::-1])[::-1]
+    result_positions = targets.copy()
+    result_rotations = rotations.copy()
+    for frame in np.flatnonzero(~stance):
+        anchors = []
+        for boundary in (left[frame], right[frame]):
+            if 0 <= boundary < count and abs(frame-boundary) < ramp_frames:
+                anchors.append((boundary, float(_ease(1-abs(frame-boundary)/ramp_frames))))
+        if not anchors:
+            continue
+        total = max(1., sum(weight for _, weight in anchors))
+        displacement = np.zeros(3)
+        angular = np.zeros((*rotations.shape[1:-2], 3))
+        for boundary, weight in anchors:
+            displacement += weight*(targets[boundary]-original_positions[boundary])/total
+            delta = rotations[boundary] @ original_rotations[boundary].swapaxes(-1, -2)
+            angular += weight*Rotation.from_matrix(delta).as_rotvec()/total
+        result_positions[frame] = original_positions[frame]+displacement
+        result_rotations[frame] = Rotation.from_rotvec(angular).as_matrix() @ original_rotations[frame]
+    return result_positions, result_rotations
+
+
+def _clear_pinned_sole(ankle, rotation, heel_offset, toe_offset, contact, maximum_pitch_degrees=20.):
+    """Clear the free end of a rolling sole without translating its planted end."""
+    heel, toe = (bool(value) for value in contact)
+    if heel == toe:
+        return ankle, rotation, 0.
+    pivot_offset, free_offset = (heel_offset, toe_offset) if heel else (toe_offset, heel_offset)
+    pivot = ankle + rotation @ pivot_offset
+    relative = rotation @ (free_offset-pivot_offset)
+    if pivot[1]+relative[1] >= -1e-10:
+        return ankle, rotation, 0.
+    # The contact planner supplies a world-ground anchor. Rotate the free end
+    # onto that plane around the anchor, as in target forefoot cleanup.
+    if abs(pivot[1]) > 1e-7:
+        raise ValueError('Pinned sole clearance requires an actual ground contact anchor')
+    horizontal = relative.copy(); horizontal[1] = 0.
+    if np.linalg.norm(horizontal) < 1e-8:
+        raise ValueError('Unresolved pinned sole pitch')
+    correction = _rotation_between(relative, horizontal)
+    angle = float(np.rad2deg(np.linalg.norm(Rotation.from_matrix(correction).as_rotvec())))
+    if angle > maximum_pitch_degrees:
+        raise ValueError(f'Pinned sole pitch correction exceeds bound: {angle:.6f} degrees > {maximum_pitch_degrees}')
+    corrected_rotation = correction @ rotation
+    return pivot-corrected_rotation @ pivot_offset, corrected_rotation, angle
+
+
 def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
                     max_ankle_correction=.15, max_hip_lowering=.05, cycles=5, max_pose_fit_degrees=20.,
                     target_period_frames=None, constrained_cycle_span=None, contact_reference=None,
@@ -44,7 +156,10 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
                     upper_body_harmonics=None, contact_phase_shift_frames=0, fit_regularization=.002,
                     upper_body_motion_scale=1.,stabilize_knee_poles=False,flat_stance=False,
                     contact_padding_frames=0,seam_smoothing_frames=0,both_support_seams=False,
-                    stance_residual_lock=False,stance_residual_padding_frames=0):
+                    stance_residual_lock=False,stance_residual_padding_frames=0,
+                    contact_phase_evidence=None,include_correction_paths=False):
+    if not isinstance(include_correction_paths,bool):
+        raise ValueError('Correction path reporting must be a boolean')
     if not isinstance(stance_residual_lock, bool):
         raise ValueError('Stance residual lock must be a boolean')
     if not isinstance(both_support_seams,bool):raise ValueError('Both support seams must be a boolean')
@@ -61,6 +176,9 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
     if target_period_frames is not None and (not isinstance(target_period_frames,int) or target_period_frames<4):
         raise ValueError('Target period must contain at least four frames')
     contact_audit, contact_cycle = audit, None
+    verified_phase = None
+    if contact_phase_evidence is not None and (contact_reference is None or constrained_cycle_span is None):
+        raise ValueError('Native contact phase evidence requires a reference and a constrained cycle span')
     if constrained_cycle_span is not None:
         if contact_reference is None:
             raise ValueError('A constrained cycle span requires an independently measured contact reference')
@@ -68,6 +186,15 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
         if len(span)!=2 or any(not isinstance(v,int) for v in span) or not 0<=span[0]<span[1]<len(source['root_positions']):
             raise ValueError('Invalid constrained cycle span')
         contact_audit = gait.audit_candidate(contact_reference, rig, speed)
+        if contact_phase_evidence is not None:
+            from .constraint_phase import validate_native_phase_evidence
+            verified_phase = validate_native_phase_evidence(contact_phase_evidence, contact_reference, rig)
+            desired_period = (target_period_frames or span[1]-span[0])/float(source['fps'])
+            if (not math.isclose(verified_phase['expectedSpeedMps'], speed, abs_tol=1e-8, rel_tol=0)
+                    or not math.isclose(verified_phase['targetPeriodSeconds'], desired_period, abs_tol=1e-8, rel_tol=0)):
+                raise ValueError('Native contact phase differs from repair speed or period')
+            contact_audit = dict(contact_audit, cycles=verified_phase['cycles'],
+                                 detection=verified_phase['detection'])
         reference_cycles = [c for c in contact_audit['cycles'] if len(c['oppositeTouchdowns'])==1
                             and .35<=c['oppositePhase']<=.65]
         if not reference_cycles:
@@ -76,14 +203,34 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
         contact_cycle = min(reference_cycles,key=lambda c:(abs(math.log(c['durationSeconds']/desired_period)),
             sum(not check['pass'] for check in c['checks']),abs(c['oppositePhase']-.5),c['start']))
         _, body = motion.fk(source['local_rot_mats'][list(span)],np.zeros((2,3)),rig)
-        seam = float(np.max(np.linalg.norm(body[1]-body[0],axis=-1)))
-        if seam>gait.DEFAULT_POLICY['maximumSeamBodyMeters']:
+        endpoint_errors = np.linalg.norm(body[1]-body[0],axis=-1)
+        seam = float(np.max(endpoint_errors))
+        lower_seam = None
+        if verified_phase is not None:
+            # Independently replayed native phases identify the leg cycle.
+            # Free upper-body channels need not be closed BEFORE their bounded
+            # periodic fit. Lower-body phase consistency and root height still
+            # guard the input, and the full-body fit/output gates remain intact.
+            leg_roots = {i for i,name in enumerate(rig['jointNames']) if name in ('LeftLeg','RightLeg')}
+            lower = []
+            for joint in range(len(rig['jointNames'])):
+                ancestor = joint
+                while ancestor >= 0 and ancestor not in leg_roots:
+                    ancestor = rig['parents'][ancestor]
+                if ancestor in leg_roots:
+                    lower.append(joint)
+            lower_seam = float(np.max(endpoint_errors[lower]))
+            if lower_seam > gait.DEFAULT_POLICY['maximumSeamBodyMeters']:
+                raise ValueError(f'Constrained lower-body cycle endpoints do not match geometrically: {lower_seam:.6f}m')
+        elif seam>gait.DEFAULT_POLICY['maximumSeamBodyMeters']:
             raise ValueError(f'Constrained cycle endpoints do not match geometrically: {seam:.6f}m')
         if abs(source['root_positions'][span[1],1]-source['root_positions'][span[0],1])>gait.DEFAULT_POLICY['maximumSeamRootHeightMeters']:
             raise ValueError('Constrained cycle endpoint hip heights do not match')
         chosen = dict(start=span[0],endInclusive=span[1],
             selection='explicit constrained pose cycle; actual output must pass the independent gait gate',
-            seamBodyMeters=seam)
+            seamBodyMeters=seam, inputLowerBodySeamMeters=lower_seam,
+            inputEndpointScope='native-phase-lower-body' if verified_phase is not None else 'full-body',
+            fullBodyOutputGateRequired=True)
         chosen['pass'] = False
     else:
         if contact_reference is not None:
@@ -173,6 +320,8 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
     target_rotations = np.stack([global_rot[:, names[s+'Foot']] for s in ('Left', 'Right')], axis=1)
     toe_rotations = [{}, {}]
     plans = []
+    maximum_contact_pitch = 0.
+    contact_pitch_frames = 0
     for side, label in enumerate(('left', 'right')):
         prefix = label.title(); foot = names[prefix+'Foot']
         heel_def = geometry['definitions'][label]['heel']
@@ -207,13 +356,9 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
             heel_anchor = flat_ankle+flat_rotation@heel_offset
             toe_anchor = flat_ankle+flat_toe_offset
             heel_anchor[1] = toe_anchor[1] = 0.
-            begin, finish = max(0, first-ramp_frames), min(count, stop+ramp_frames)
-            for frame in range(begin, finish):
-                weight = min(_ease((frame-begin)/max(1, first-begin)),
-                             _ease((finish-1-frame)/max(1, finish-stop)))
-                if first <= frame < stop:
-                    weight = 1.
-                event_frame = min(stop-1, max(first, frame))
+            for frame in range(first, stop):
+                weight = 1.
+                event_frame = frame
                 heel, tip = masks[event_frame, side]
                 flat = float(heel and tip or flat_stance)
                 # A flat contact constrains orientation; heel/toe-only contacts
@@ -234,6 +379,28 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
             plans.append(dict(side=label, start=int(first), stopExclusive=int(stop),
                               heelAnchorMeters=heel_anchor.tolist(), toeAnchorMeters=toe_anchor.tolist()))
 
+        if enforce_sole_clearance:
+            for frame in np.flatnonzero(masks[:, side].any(axis=-1)):
+                orientation = np.eye(3); toe_offset = np.zeros(3)
+                for joint in toe_chain:
+                    toe_offset += orientation @ np.asarray(rig['offsets'][joint])
+                    orientation = orientation @ toe_rotations[side][joint][frame]
+                toe_offset += orientation @ np.asarray(toe_def['offset'])
+                targets[frame, side], target_rotations[frame, side], pitch = _clear_pinned_sole(
+                    targets[frame, side], target_rotations[frame, side], heel_offset, toe_offset,
+                    masks[frame, side])
+                maximum_contact_pitch = max(maximum_contact_pitch, pitch)
+                contact_pitch_frames += int(pitch > 0.)
+
+        original_rotations = np.stack([global_rot[:, foot], *[local[:, j] for j in toe_chain]], axis=1)
+        repaired_rotations = np.stack([target_rotations[:, side], *[toe_rotations[side][j] for j in toe_chain]], axis=1)
+        targets[:, side], repaired_rotations = _fade_stance_residual(
+            joints[:, foot], original_rotations, targets[:, side], repaired_rotations,
+            masks[:, side].any(axis=-1), ramp_frames)
+        target_rotations[:, side] = repaired_rotations[:, 0]
+        for index, joint in enumerate(toe_chain, 1):
+            toe_rotations[side][joint] = repaired_rotations[:, index]
+
     if enforce_sole_clearance:
         for side,label in enumerate(('left','right')):
             foot=names[label.title()+'Foot']
@@ -250,7 +417,11 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
                 toe_vector+=orientation@np.asarray(toe_def['offset'])
                 heel=targets[frame,side]+target_rotations[frame,side]@np.asarray(heel_def['offset'])
                 toe=targets[frame,side]+toe_vector
-                targets[frame,side,1]+=max(0.,-min(heel[1],toe[1]))
+                if masks[frame,side].any():
+                    if min(heel[1],toe[1]) < -1e-8:
+                        raise ValueError('Pinned stance clearance did not preserve the contact plane')
+                else:
+                    targets[frame,side,1]+=max(0.,-min(heel[1],toe[1]))
     correction = np.linalg.norm(targets-np.stack([joints[:, names[s+'Foot']] for s in ('Left', 'Right')], axis=1), axis=-1)
     if correction.max() > max_ankle_correction:
         frame, side = np.unravel_index(np.argmax(correction), correction.shape)
@@ -296,12 +467,30 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
     seam_report = None
     maximum_ankle_correction=float(correction.max())
     maximum_hip_lowering=float(lowered.max())
+    legacy_sum = dict(rotationDegrees=maximum_fit_degrees, ankleMeters=maximum_ankle_correction,
+                      rootMeters=maximum_hip_lowering)
+    limits = dict(rotationDegrees=max_pose_fit_degrees, ankleMeters=max_ankle_correction,
+                  rootMeters=max_hip_lowering)
+    fitted_roots = output_roots.copy()
+    fitted_roots[:, 1] += lowered[indices[first:last]]
+    fitted_points = motion.fk(local[first:last], fitted_roots, rig)[1]
+    repaired_points = motion.fk(repaired['local_rot_mats'], repaired['root_positions'], rig)[1]
+    feet = [names['LeftFoot'], names['RightFoot']]
+    budget = _CorrectionBudget(rig, period,
+        np.rad2deg(fit_angles).reshape(period, -1)[indices[first:last]],
+        np.linalg.norm(repaired_points[:, feet]-fitted_points[:, feet], axis=-1),
+        np.linalg.norm(repaired['root_positions']-fitted_roots, axis=-1))
+    budget_report = budget.enforce(limits, legacy_sum, 'contact IK')
     if seam_smoothing_frames:
+        before_seam = repaired
         repaired,seam_report=smooth_repaired_seam(repaired,rig,speed,period,seam_smoothing_frames,after)
+        budget.add_motion('left_support_seam', before_seam, repaired)
         if both_support_seams:
             before_both=motion.complete(repaired_local[first:last],output_roots,rig,fps)
+            before_right = repaired
             repaired,right_report=smooth_repaired_seam(repaired,rig,speed,period,seam_smoothing_frames,
                 gait.audit_candidate(repaired,rig,speed),side='right')
+            budget.add_motion('right_support_seam', before_right, repaired)
             seam_report['rightSeam']=right_report
             _,before_points=motion.fk(before_both['local_rot_mats'],before_both['root_positions'],rig)
             _,after_points=motion.fk(repaired['local_rot_mats'],repaired['root_positions'],rig)
@@ -311,28 +500,29 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
             seam_report.update(maximumAdditionalRotationDegrees=float(angle.max()),
                 maximumAdditionalFootMeters=float(np.linalg.norm(after_points[:,feet]-before_points[:,feet],axis=-1).max()),
                 maximumAdditionalRootMeters=float(np.linalg.norm(repaired['root_positions']-before_both['root_positions'],axis=-1).max()))
-        maximum_ankle_correction+=seam_report['maximumAdditionalFootMeters']
-        maximum_hip_lowering+=seam_report['maximumAdditionalRootMeters']
-        maximum_fit_degrees+=seam_report['maximumAdditionalRotationDegrees']
-        if (maximum_ankle_correction>max_ankle_correction or maximum_hip_lowering>max_hip_lowering
-                or maximum_fit_degrees>max_pose_fit_degrees):
-            raise ValueError('Combined periodic and seam correction exceeds the original correction bounds')
+        legacy_sum['ankleMeters'] += seam_report['maximumAdditionalFootMeters']
+        legacy_sum['rootMeters'] += seam_report['maximumAdditionalRootMeters']
+        legacy_sum['rotationDegrees'] += seam_report['maximumAdditionalRotationDegrees']
+        budget_report = budget.enforce(limits, legacy_sum, 'seam')
         after=gait.audit_candidate(repaired,rig,speed)
     stance_report = None
     if stance_residual_lock:
+        before_stance = repaired
         repaired, stance_report = lock_stance_residual(repaired, rig, period, stance_residual_padding_frames)
-        maximum_ankle_correction += stance_report['maximumAdditionalFootMeters']
-        maximum_fit_degrees += stance_report['maximumAdditionalRotationDegrees']
-        maximum_hip_lowering += stance_report['maximumAdditionalRootMeters']
-        if (maximum_ankle_correction > max_ankle_correction or maximum_fit_degrees > max_pose_fit_degrees
-                or maximum_hip_lowering > max_hip_lowering):
-            raise ValueError(f'Combined periodic and stance correction exceeds the original correction bounds: '
-                             f'rotation={maximum_fit_degrees:.4f}, foot={maximum_ankle_correction:.6f}, hip={maximum_hip_lowering:.6f}')
+        budget.add_motion('stance_residual_lock', before_stance, repaired)
+        legacy_sum['ankleMeters'] += stance_report['maximumAdditionalFootMeters']
+        legacy_sum['rotationDegrees'] += stance_report['maximumAdditionalRotationDegrees']
+        legacy_sum['rootMeters'] += stance_report['maximumAdditionalRootMeters']
+        budget_report = budget.enforce(limits, legacy_sum, 'stance')
         after = gait.audit_candidate(repaired, rig, speed)
-    report = dict(schemaVersion=1, algorithm='periodic_fourier_with_world_contact_ik_v1',
+    maximum_ankle_correction = budget_report['peaks']['ankleMeters']['value']
+    maximum_hip_lowering = budget_report['peaks']['rootMeters']['value']
+    maximum_fit_degrees = budget_report['peaks']['rotationDegrees']['value']
+    report = dict(schemaVersion=1, algorithm='periodic_fourier_with_world_contact_ik_v2',
         productionReady=False, sourceCycle=chosen, constructedCycles=cycles,
         sourceWasAcceptedMaster=audit['pass'], sourceAudit=audit, after=after,
         harmonics=harmonics, rampFrames=ramp_frames,
+        stanceTransition='boundary_correction_residual_fade',
         upperBodyHarmonics=upper_body_harmonics,minimumKneeBendDegrees=minimum_knee_bend_degrees,
         contactPhaseShiftFrames=contact_phase_shift_frames,
         contactPaddingFrames=contact_padding_frames,
@@ -342,16 +532,25 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
         upperBodyMotionScale=upper_body_motion_scale,stabilizedKneePoles=bool(stabilize_knee_poles),
         flatStanceApplied=bool(flat_stance),
         soleClearanceApplied=bool(enforce_sole_clearance),
+        maximumContactPitchCorrectionDegrees=maximum_contact_pitch,
+        contactPitchCorrectionLimitDegrees=20.,contactPitchCorrectedFrames=contact_pitch_frames,
         sourcePeriodFrames=source_period, outputPeriodFrames=period,
         maximumAnkleCorrectionMeters=maximum_ankle_correction, maximumHipLoweringMeters=maximum_hip_lowering,
         maximumPeriodicFitRotationDegrees=maximum_fit_degrees,
+        correctionBudget=budget_report,
         contactPlan=plans, contactPlanSource=('measured source heel/toe contact intervals' if contact_cycle is None
             else 'independently measured generation-reference heel/toe intervals'),
         contactReferenceMotionSha256=None if contact_cycle is None else contact_audit['sourceMotionSha256'],
         contactReferenceCycle=contact_cycle,
         outputSpace='travelling', repairAcceptedByAuthoringGate=after['pass'])
+    if include_correction_paths:
+        report['correctionPaths']={key:value.tolist() for key,value in budget.paths.items()}
     if seam_report is not None:report['seamSmoothing']=seam_report
     if stance_report is not None:report['stanceResidualLock']=stance_report
+    if verified_phase is not None:
+        report['nativeContactPhase'] = dict(policy=verified_phase['policy'], sha256=verified_phase['sha256'],
+            scope=verified_phase['scope'], sourceAuditPass=verified_phase['sourceAuditPass'],
+            referenceAcceptedAsMaster=False)
     return repaired, report
 
 

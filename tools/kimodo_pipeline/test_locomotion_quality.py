@@ -33,6 +33,30 @@ class LocomotionQualityTests(unittest.TestCase):
         report = compare(trace(0), airborne)
         self.assertFalse(report['passed'])
         self.assertTrue(all(c['reason'] == 'insufficient near-ground samples' for c in report['cases']))
+        self.assertTrue(report['referenceAvailable'])
+        self.assertFalse(report['candidateAvailable'])
+        self.assertTrue(all(c['failureClass'] == 'candidate-contact-unavailable' for c in report['cases']))
+
+    def test_floating_reference_is_unavailable_not_evidence_of_candidate_skating(self):
+        floating = trace(0)
+        for row in floating['frames']:
+            for side in ('left', 'right'):
+                row[side]['MinimumSupportHeight'] = 2.8
+        report = compare(floating, floating)
+        self.assertFalse(report['passed'])
+        self.assertFalse(report['referenceAvailable'])
+        self.assertFalse(report['candidateAvailable'])
+        self.assertTrue(all(c['failureClass'] == 'reference-contact-unavailable' for c in report['cases']))
+        self.assertTrue(all(c['original']['supportHeightRejectedPairs'] == 238 for c in report['cases']))
+        self.assertTrue(all(c['original']['centroidHeightRejectedPairs'] == 0 for c in report['cases']))
+        self.assertTrue(all(c['original']['minimumSupportHeightCm'] == 2.8 for c in report['cases']))
+        self.assertTrue(all(c['candidate']['medianCmPerSecond'] is None for c in report['cases']))
+
+    def test_nonfinite_height_cannot_be_hidden_by_sample_filter(self):
+        invalid = trace(0)
+        invalid['frames'][100]['left']['MinimumSupportHeight'] = float('nan')
+        with self.assertRaisesRegex(ValueError, 'Nonfinite'):
+            compare(trace(0), invalid)
 
     def test_missing_or_reordered_physics_samples_fail(self):
         incomplete = trace(0)

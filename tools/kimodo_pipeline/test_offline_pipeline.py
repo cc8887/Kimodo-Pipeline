@@ -17,6 +17,30 @@ from .motion import complete, fk
 
 
 class OfflineFbxTests(unittest.TestCase):
+    def test_mesh_name_extraction_releases_children_before_scene_on_success_and_error(self):
+        state=dict(children=0,closed=0)
+        class Child:
+            def __init__(self,name):self.name=name;state['children']+=1
+            def __del__(self):state['children']-=1
+        class Nodes:
+            def __init__(self,names):self.names=names
+            def __iter__(self):
+                for name in self.names:yield Child(name)
+        class Scene:
+            def __init__(self,names):self.nodes=Nodes(names)
+            def __enter__(self):return self
+            def __exit__(self,*args):
+                self.assert_children();state['closed']+=1
+            def assert_children(self):
+                if state['children']:raise AssertionError('Scene released before child wrappers')
+        skeleton=dict(rawBoneNames=['root'])
+        with patch.dict(sys.modules,{'ufbx':SimpleNamespace(load_file=lambda p:Scene(['Root']))}):
+            self.assertEqual(mesh_binding_skeleton(skeleton,'mesh.fbx')['rawBoneNames'],['Root'])
+        with patch.dict(sys.modules,{'ufbx':SimpleNamespace(load_file=lambda p:Scene(['Root','ROOT']))}):
+            with self.assertRaisesRegex(ValueError,'Ambiguous'):
+                mesh_binding_skeleton(skeleton,'mesh.fbx')
+        self.assertEqual(state,dict(children=0,closed=2))
+
     def setUp(self):
         self.skeleton=json.loads((ROOT/'assets/config/v4_recovery_movement_source_inputs.json').read_text(encoding='utf8'))['skeletons'][0]
 

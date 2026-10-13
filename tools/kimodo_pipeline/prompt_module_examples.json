@@ -1,0 +1,62 @@
+{
+  "extends": "directional_gait_rules.json",
+  "promptModules": {
+    "schemaVersion": 1,
+    "subject": "A person",
+    "style": "feminine",
+    "modules": {
+      "walk": {"slot": "action", "text": "is walking", "claims": {"action": "walk"}},
+      "run": {"slot": "action", "text": "is running", "claims": {"action": "run"}},
+      "sprint": {"slot": "action", "text": "is sprinting", "claims": {"action": "sprint"}},
+      "forward": {"slot": "direction", "text": "forward", "claims": {"direction": "forward", "heading": "forward"}},
+      "backward": {"slot": "direction", "text": "backward", "claims": {"direction": "backward", "heading": "forward"}},
+      "left": {"slot": "direction", "text": "to their left while facing forward", "claims": {"direction": "left", "heading": "forward"}},
+      "steady": {"slot": "phase", "text": "at a steady pace with complete alternating strides", "claims": {"phase": "steady", "contact": "alternating"}},
+      "sprint-drive": {"slot": "phase", "text": "at a sustained fast pace with complete alternating strides", "claims": {"phase": "steady", "contact": "alternating"}},
+      "standing": {"slot": "stance", "text": "at standing height", "claims": {"stance": "standing"}},
+      "crouching": {"slot": "stance", "text": "in a low crouch", "claims": {"stance": "crouching"}},
+      "upright-standing": {
+        "slot": "posture", "text": "a straight relaxed back and balanced upright head",
+        "claims": {"torsoPose": "upright", "headPose": "balanced"}, "when": {"stance": "standing"}
+      },
+      "inclined-crouch": {
+        "slot": "posture", "text": "the torso leaning naturally over the bent knees",
+        "claims": {"torsoPose": "inclined"}, "when": {"stance": "crouching"}
+      },
+      "steady-upper-arms": {
+        "slot": "arms", "text": "upper arms held steady close to the torso",
+        "claims": {"upperArmMotion": "steady", "armSpread": "narrow"}
+      },
+      "moving-forearms": {
+        "slot": "arms", "text": "forearms swinging so the hands clearly move forward and back",
+        "claims": {"forearmMotion": "swinging", "handMotion": "visible"}
+      },
+      "feminine-quality": {"slot": "style", "text": "smooth graceful movement", "claims": {"movementStyle": "graceful"}},
+      "athletic-standing": {
+        "slot": "posture", "text": "the torso inclined slightly into the movement",
+        "claims": {"torsoPose": "inclined"}, "when": {"stance": "standing"}
+      },
+      "athletic-arms": {
+        "slot": "arms", "text": "coordinated upper-arm and forearm swings",
+        "claims": {"upperArmMotion": "swinging", "forearmMotion": "swinging", "handMotion": "visible"}
+      },
+      "athletic-quality": {"slot": "style", "text": "brisk purposeful movement", "claims": {"movementStyle": "athletic"}}
+    },
+    "styles": {
+      "neutral": [],
+      "feminine": ["upright-standing", "inclined-crouch", "steady-upper-arms", "moving-forearms", "feminine-quality"],
+      "athletic": ["athletic-standing", "inclined-crouch", "athletic-arms", "athletic-quality"]
+    },
+    "motions": {
+      "Walk_Forward": {"modules": ["walk", "forward", "steady", "standing"]},
+      "Walk_Backward": {"base": "Walk_Forward", "remove": ["forward"], "add": ["backward"]},
+      "Run_Forward": {"base": "Walk_Forward", "remove": ["walk"], "add": ["run"]},
+      "Run_Backward": {"base": "Run_Forward", "remove": ["forward"], "add": ["backward"]},
+      "Sprint": {"base": "Run_Forward", "remove": ["run"], "add": ["sprint"]},
+      "Sprint_Acceleration": {"base": "Sprint", "remove": ["steady"], "add": ["sprint-drive"]},
+      "Crouch_Walk_Forward": {"base": "Walk_Forward", "remove": ["standing"], "add": ["crouching"]},
+      "Crouch_Walk_Backward": {"base": "Crouch_Walk_Forward", "remove": ["forward"], "add": ["backward"]},
+      "Crouch_Walk_Left": {"base": "Crouch_Walk_Forward", "remove": ["forward"], "add": ["left"]}
+    }
+  }
+}

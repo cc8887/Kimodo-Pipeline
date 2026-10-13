@@ -25,7 +25,7 @@ def main():
     paths.settings.cache_clear()
     ROOT=paths.asset_root()
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=('plan','run','inspect','inputs'))
+    parser.add_argument('command',choices=('plan','preflight','run','inspect','inputs'))
     parser.add_argument('--config',type=Path,help='Local paths TOML, also inherited by subprocesses')
     parser.add_argument('--contracts',type=Path,default=paths.contract_path())
     parser.add_argument('--rules',type=Path)
@@ -37,7 +37,8 @@ def main():
     parser.add_argument('--base-pack',type=Path,help='Retain deliveries from this diagnostic pack and generate its missing derived resources')
     parser.add_argument('--runtime-case',action='append',help='Exact related runtime scenario; omitted runs the full matrix')
     parser.add_argument('--target',action='append',help='Exact node id; includes all transitive prerequisites')
-    parser.add_argument('--scope',choices=('all','non-prop','mantle','air','derived','run','crouch'),default='non-prop',help='Non-prop closure, independent mantle/air/derived/run/crouch lane, or explicit diagnostic nodes')
+    parser.add_argument('--motion',action='append',help='Filter a named scope by exact semantic motion name; repeatable')
+    parser.add_argument('--scope',choices=('all','non-prop','mantle','air','derived','run','crouch','locomotion'),default='non-prop',help='Non-prop closure or an independent production lane')
     parser.add_argument('--keep-going',action='store_true',help='Attempt independent branches; failed prerequisites still block dependents')
     parser.add_argument('--authoring-only',action='store_true',help='Explicit diagnostic exception: stop before conversion/runtime')
     parser.add_argument('--pack-output',type=Path)
@@ -46,7 +47,7 @@ def main():
     parser.add_argument('--offline-deps',type=Path,default=paths.configured_path('offline_deps'))
     args=parser.parse_args()
     if args.rules is None:
-        args.rules=paths.PIPELINE_ROOT/'tools/kimodo_pipeline'/({'air':'air_rules.json','run':'run_rules.json','crouch':'crouch_rules.json'}.get(args.scope,'directional_gait_rules.json'))
+        args.rules=paths.PIPELINE_ROOT/'tools/kimodo_pipeline'/({'air':'air_rules.json','run':'run_rules.json','crouch':'crouch_rules.json','locomotion':'upright_feminine_rules.json'}.get(args.scope,'directional_gait_rules.json'))
     if args.scope=='air':
         from tools.kimodo_pipeline.air import build_graph as build_air_graph
         graph=build_air_graph(read_json(args.contracts),load_rules(args.rules))
@@ -54,7 +55,7 @@ def main():
     if args.upstream_receipts or args.scope=='derived':
         from tools.kimodo_pipeline.derived import reuse_upstream
         graph=reuse_upstream(graph,args.upstream_receipts,derived_only=args.scope=='derived')
-    if args.scope in ('non-prop','mantle','run','crouch'):
+    if args.scope in ('non-prop','mantle','run','crouch','locomotion'):
         from tools.kimodo_pipeline.scope import non_prop_targets
         if args.target:raise ValueError('Use either a named scope or explicit --target')
         args.target=non_prop_targets(read_json(args.contracts))
@@ -72,6 +73,12 @@ def main():
             from tools.kimodo_pipeline.scope import crouch_targets
             args.target=crouch_targets(read_json(args.contracts))
             graph['pipeline']='crouch'
+        elif args.scope=='locomotion':
+            from tools.kimodo_pipeline.locomotion_style import targets
+            if not graph['rules'].get('locomotionPosture') and not graph['rules'].get('promptModules'):
+                parser.error('Locomotion scope requires an explicit posture profile or modular prompt configuration')
+            args.target=targets(read_json(args.contracts))
+            graph['pipeline']='locomotion'
     elif args.scope=='air':
         from tools.kimodo_pipeline.air import targets
         if args.target:raise ValueError('Use either the Air scope or explicit --target')
@@ -82,6 +89,25 @@ def main():
         from tools.kimodo_pipeline.derived import targets
         args.target=targets(graph,read_json(args.contracts),read_json(args.base_pack))
         if not args.target:parser.error('No missing derived resources in the selected pack')
+    preset_scope=graph['rules'].get('motionScope')
+    if preset_scope is not None:
+        if (not isinstance(preset_scope,list) or not preset_scope or
+                any(not isinstance(name,str) or not name for name in preset_scope) or len(set(preset_scope))!=len(preset_scope)):
+            parser.error('motionScope must contain distinct semantic motion names')
+        available={graph['nodes'][key]['params']['contract']['semanticName'] for key in (args.target or [])
+                   if graph['nodes'][key]['op']=='deliver'}
+        if set(preset_scope)-available:
+            parser.error('Preset motionScope is outside the selected production scope')
+        args.target=[key for key in args.target if graph['nodes'][key]['op']=='deliver'
+                     and graph['nodes'][key]['params']['contract']['semanticName'] in preset_scope]
+    if args.motion:
+        requested=set(args.motion)
+        available={graph['nodes'][key]['params']['contract']['semanticName'] for key in (args.target or [])
+                   if graph['nodes'][key]['op']=='deliver'}
+        if requested-available:
+            parser.error('Motion names are outside the selected scope: '+', '.join(sorted(requested-available)))
+        args.target=[key for key in args.target if graph['nodes'][key]['op']=='deliver'
+                     and graph['nodes'][key]['params']['contract']['semanticName'] in requested]
     order=topological_order(graph['nodes'],args.target)
     if args.command=='inspect':
         print(json.dumps({'summary':graph['summary'],'selectedOrder':order,
@@ -97,8 +123,50 @@ def main():
         path=args.output/'authoring-input-requests.json'
         path.write_text(json.dumps(requests,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         print(json.dumps({'inputs':len(requests),'path':str(path)},ensure_ascii=False));return
+    if args.command=='preflight':
+        if not args.kimodo_repo:parser.error('Constraint preflight requires the configured Kimodo skeleton repository')
+        from tools.kimodo_pipeline.runner import Runner, write_json
+        from tools.kimodo_pipeline.gait_constraints import materialize_gait_constraints
+        from tools.kimodo_pipeline.graph import digest
+        runner=Runner(graph,args.output/'constraint-inputs',args.kimodo_repo,args.python)
+        runner.output.mkdir(parents=True,exist_ok=False)
+        checks=[]
+        safe_ops={'rig','native_gait_reference','reuse_motion','gait_style_reference'}
+        def materialize_input(key):
+            if key in runner.results:return
+            node=graph['nodes'][key]
+            if node['op'] not in safe_ops:
+                raise ValueError('Preflight needs an executed dependency before '+key+' ('+node['op']+')')
+            for dep in node['deps']:materialize_input(dep)
+            runner.execute_node(key)
+        for key in order:
+            node=graph['nodes'][key]
+            if node['op']!='generate':continue
+            row=dict(node=key,semantic=node['params'].get('semantic'),passed=False)
+            try:
+                params=node['params'];reference=params.get('gaitReference')
+                if not reference:raise ValueError('This preflight currently supports measured gait constraints only')
+                if params.get('postureIdleReference'):
+                    raise ValueError('Explicit posture authoring must be materialized before this constraint preflight')
+                materialize_input(reference)
+                phase=runner.output_of(reference).get('native-phase-evidence.json')
+                constraints,receipt=materialize_gait_constraints(params,runner.motion(reference),runner.rig(),
+                    phase_evidence=read_json(phase['path']) if params.get('nativePhaseEvidence') and phase else None)
+                folder=args.output/'constraints'/digest(key)[:20];folder.mkdir(parents=True,exist_ok=True)
+                write_json(folder/'constraints.json',constraints);write_json(folder/'receipt.json',receipt)
+                row.update(passed=True,constraints=str(folder/'constraints.json'),receipt=str(folder/'receipt.json'),
+                    constraintCounts=receipt['constraintCounts'])
+            except (ValueError,KeyError,OSError) as error:row['error']=str(error)
+            checks.append(row)
+        report=dict(status='constraints_consistent' if checks and all(c['passed'] for c in checks) else 'preflight_rejected',
+            productionReady=False,generationExecuted=False,checks=checks,
+            scope='constraint input consistency only; generated motion and delivery remain unverified')
+        write_json(args.output/'preflight.json',report)
+        print(json.dumps(report,ensure_ascii=False,indent=2))
+        if report['status']!='constraints_consistent':raise SystemExit(1)
+        return
     if not args.authoring_only:
-        if args.scope not in ('non-prop','mantle','air','derived','run','crouch'):parser.error('Full pipeline requires a named production scope; explicit graph diagnostics use --authoring-only')
+        if args.scope not in ('non-prop','mantle','air','derived','run','crouch','locomotion'):parser.error('Full pipeline requires a named production scope; explicit graph diagnostics use --authoring-only')
         if not args.kimodo_repo:parser.error('Full pipeline requires --kimodo-repo')
         if args.offline_deps:sys.path.insert(0,str(args.offline_deps))
         for path in (args.godot,args.dotnet):

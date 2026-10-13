@@ -1,0 +1,671 @@
+{
+  "schemaVersion": 1,
+  "model": "Kimodo-SOMA-RP-v1.1",
+  "fps": 30,
+  "seed": 2026101217,
+  "diffusionSteps": 100,
+  "candidateSeconds": 3,
+  "motionPromptOverrides": {
+    "Land_Light": "A person lands softly on both feet, bending both knees and lowering the hips into a shallow squat to cushion the landing. Both feet stay planted as the person smoothly rises into a balanced standing stance.",
+    "Land_Heavy": "A person lands on both feet in a deep squat, bending the knees fully and dropping the hips low between the feet to absorb a heavy impact. The feet stay flat on the floor as the person pauses briefly in the deep crouch, then rises smoothly into a balanced standing stance.",
+    "Roll": "A person performs one forward shoulder roll along the ground. Starting in a low crouch, the person tucks the head and knees, rolls over one shoulder and across the upper back, then brings both feet underneath the body and rises into a balanced standing stance.",
+    "Crouch_Rotate_90_Left": "A person turns 90 degrees to the left by stepping in place while crouching, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Rotate_90_Right": "A person turns 90 degrees to the right by stepping in place while crouching, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Transition_Left": "A person standing makes a small corrective step with the left foot and settles into a balanced stance, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Rotate_90_Left": "A person turns 90 degrees to the left by stepping in place, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Turn_180_Right": "A person turns 180 degrees to the right by stepping in place, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Turn_180_Right": "A person turns 180 degrees to the right by stepping in place while crouching, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Transition_Right": "A person standing makes a small corrective step with the right foot and settles into a balanced stance, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Rotate_90_Right": "A person turns 90 degrees to the right by stepping in place, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Turn_180_Left": "A person turns 180 degrees to the left by stepping in place while crouching, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Turn_180_Left": "A person turns 180 degrees to the left by stepping in place, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Turn_90_Left": "A person turns 90 degrees to the left by stepping in place, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Stop_Left": "A person walking forward comes to a balanced stop with the left foot in the designated support phase, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Turn_90_Right": "A person turns 90 degrees to the right by stepping in place while crouching, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "StandToCrouch": "A person lowers from standing into a stable crouch while keeping both feet planted, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Turn_90_Left": "A person turns 90 degrees to the left by stepping in place while crouching, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Stop_Right": "A person walking forward comes to a balanced stop with the right foot in the designated support phase, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "CrouchToStand": "A person rises from a stable crouch to standing while keeping both feet planted, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Turn_90_Right": "A person turns 90 degrees to the right by stepping in place, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_DynamicTransition_Left": "A person crouching makes a small corrective step with the left foot and settles into a balanced stance, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_DynamicTransition_Right": "A person crouching makes a small corrective step with the right foot and settles into a balanced stance, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Transition_Left": "A person crouching makes a small corrective step with the left foot and settles into a balanced stance, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Crouch_Transition_Right": "A person crouching makes a small corrective step with the right foot and settles into a balanced stance, with a graceful feminine movement style, the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Stand_DynamicTransition_Left": "A person standing makes a small corrective step with the left foot and settles into a balanced stance, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Stand_DynamicTransition_Right": "A person standing makes a small corrective step with the right foot and settles into a balanced stance, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Stand_Transition_Left": "A person standing makes a small corrective step with the left foot and settles into a balanced stance, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+    "Stand_Transition_Right": "A person standing makes a small corrective step with the right foot and settles into a balanced stance, with a graceful feminine movement style, a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back."
+  },
+  "poseSampleFraction": 0.8,
+  "leanDegrees": 3,
+  "accelerationDegrees": 2,
+  "aimPitchDistribution": {
+    "Spine1": 0.15,
+    "Spine2": 0.15,
+    "Chest": 0.4,
+    "Neck1": 0.15,
+    "Neck2": 0.15
+  },
+  "lookYawDistribution": {
+    "Spine1": 0.15,
+    "Spine2": 0.15,
+    "Chest": 0.3,
+    "Neck1": 0.2,
+    "Neck2": 0.2
+  },
+  "lookYawPhysicalLimitDegrees": 120,
+  "lookPitchPhysicalLimitDegrees": 60,
+  "poseLayouts": {
+    "Default_Poses": {
+      "0": "Stand_Pose",
+      "1": "Walk_Forward_Pose",
+      "2": "Crouch_Pose",
+      "3": {
+        "copyFrame": 2
+      }
+    },
+    "Normal_Poses": {
+      "0": "Stand_Pose",
+      "1": "Walk_Forward_Pose",
+      "2": "Crouch_Pose",
+      "3": {
+        "copyFrame": 2
+      }
+    },
+    "Feminine_Poses": {
+      "0": {
+        "base": "Stand_Pose",
+        "prompt": "A person holds a balanced relaxed pose with arms resting naturally at the sides and level shoulders.",
+        "preserveLowerBody": true
+      },
+      "1": {
+        "base": "Walk_Forward_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "2": {
+        "base": "Crouch_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "3": {
+        "copyFrame": 2
+      }
+    },
+    "Masculine_Poses": {
+      "0": {
+        "base": "Stand_Pose",
+        "prompt": "A person holds a balanced upright pose with shoulders relaxed and arms resting at the sides.",
+        "preserveLowerBody": true
+      },
+      "1": {
+        "base": "Walk_Forward_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "2": {
+        "base": "Crouch_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "3": {
+        "copyFrame": 2
+      }
+    },
+    "Injured_Poses": {
+      "0": {
+        "base": "Stand_Pose",
+        "prompt": "A person supports the left forearm against the abdomen with the right hand while holding a steady balanced pose.",
+        "preserveLowerBody": true
+      },
+      "1": {
+        "base": "Walk_Forward_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "2": {
+        "base": "Crouch_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "3": {
+        "copyFrame": 2
+      }
+    },
+    "HandsTied_Poses": {
+      "0": {
+        "base": "Stand_Pose",
+        "prompt": "A person holds both wrists together behind the lower back while holding a steady balanced pose.",
+        "preserveLowerBody": true
+      },
+      "1": {
+        "base": "Walk_Forward_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "2": {
+        "base": "Crouch_Pose",
+        "upperFromFrame": 0,
+        "reference": "Stand_Pose"
+      },
+      "3": {
+        "copyFrame": 2
+      }
+    }
+  },
+  "mirrorPolicy": "base_relative_component_delta; preserve handed grips by mirroring only leg chains for Crouch_Rifle",
+  "publishPolicy": "authoring candidates only; target-rig curves, retarget and final-skeleton acceptance are required before production export",
+  "reuseModel": true,
+  "torchThreads": 2,
+  "sampledGaitPoses": {
+    "Lean_Pose": "Run_Forward",
+    "Run_Forward_Pose": "Run_Forward",
+    "Run_Left_Pose": "Run_Left_Forward",
+    "Crouch_Walk_Pose": "Crouch_Walk_Forward"
+  },
+  "locomotionOverrides": {
+    "Walk_Left_Forward": {
+      "prompt": "A person walks steadily to the left, taking forward strides with hips turned left and shoulders facing forward, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": 45
+    },
+    "Walk_Left_Backward": {
+      "prompt": "A person walks steadily to the left, taking backward strides with hips turned right and shoulders facing forward, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": -45
+    },
+    "Run_Left_Forward": {
+      "prompt": "A person runs steadily to the left, taking forward strides with hips turned left and shoulders facing forward, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": 45
+    },
+    "Run_Left_Backward": {
+      "prompt": "A person runs steadily to the left, taking backward strides with hips turned right and shoulders facing forward, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": -45
+    },
+    "Crouch_Walk_Left_Forward": {
+      "prompt": "A person walks steadily to the left in a low crouch with hips angled left and shoulders facing forward, with the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": 45
+    },
+    "Crouch_Walk_Left_Backward": {
+      "prompt": "A person walks steadily to the left in a low crouch with hips angled right and shoulders facing forward, with the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": -45
+    },
+    "Sprint_Acceleration": {
+      "prompt": "A person sprints forward continuously with energetic alternating strides, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        1
+      ],
+      "headingDegrees": 0,
+      "velocity": 5,
+      "reference": "Run_Forward"
+    },
+    "Walk_Forward": {
+      "prompt": "A person walks forward steadily, taking complete alternating strides, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        1
+      ],
+      "headingDegrees": 0
+    },
+    "Run_Forward": {
+      "prompt": "A person runs forward steadily, taking complete alternating strides, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        1
+      ],
+      "headingDegrees": 0
+    },
+    "Run_Backward": {
+      "prompt": "A person runs backward steadily, taking complete alternating strides, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        -1
+      ],
+      "headingDegrees": 0
+    },
+    "Crouch_Walk_Forward": {
+      "prompt": "A person walks forward steadily in a low crouch, taking even alternating steps, with the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        1
+      ],
+      "headingDegrees": 0
+    },
+    "Crouch_Walk_Backward": {
+      "prompt": "A person walks backward steadily in a low crouch, taking even alternating steps, with the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        -1
+      ],
+      "headingDegrees": 0
+    },
+    "Crouch_Walk_Left": {
+      "prompt": "A person walks steadily to the left in a low crouch, taking even alternating steps, with the torso leaning naturally over the bent knees, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        1,
+        0
+      ],
+      "headingDegrees": 0
+    },
+    "Walk_Backward": {
+      "prompt": "A person walks backward steadily, taking complete alternating strides, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        -1
+      ],
+      "headingDegrees": 0
+    },
+    "Sprint": {
+      "prompt": "A person sprints forward at a constant speed with quick complete alternating strides, with a straight relaxed back and an upright balanced head, upper arms held steady close to the torso, and forearms swinging so the hands clearly move forward and back.",
+      "direction": [
+        0,
+        1
+      ],
+      "headingDegrees": 0
+    }
+  },
+  "gaitClosure": {
+    "Walk_Left_Forward": {
+      "candidateSeconds": 5,
+      "boundaryContextFrames": 1,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 5,
+      "repairMirroredCycle": true,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "upperBodyIdleReference": "Idle"
+    },
+    "Walk_Left_Backward": {
+      "candidateSeconds": 5,
+      "boundaryContextFrames": 1,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "constraintReference": "native_als",
+      "discoverySeconds": 5,
+      "repairMirroredCycle": true,
+      "constrainHandOrientations": true,
+      "upperBodyIdleReference": "Idle"
+    },
+    "Run_Left_Forward": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "boundaryContextFrames": 2,
+      "fullBodyPhaseFractions": [
+        0.041666666666666664,
+        0.08333333333333333,
+        0.5,
+        0.9166666666666666,
+        0.9583333333333334
+      ],
+      "supportAnchorCount": 6,
+      "supportWindowFraction": 1,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 3,
+      "repairCycleIndex": 2,
+      "repairSeamSmoothingFrames": 1,
+      "contactPaddingFrames": 0,
+      "stabilizeKneePoles": true,
+      "preserveReferenceHeading": true,
+      "targetPhaseHarmonics": 3,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 4,
+      "repairMirroredCycle": true
+    },
+    "Run_Left_Backward": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "boundaryContextFrames": 2,
+      "fullBodyPhaseFractions": [
+        0.05,
+        0.1,
+        0.5,
+        0.9,
+        0.95
+      ],
+      "supportAnchorCount": 6,
+      "supportWindowFraction": 1,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 3,
+      "repairCycleIndex": 0,
+      "repairSeamSmoothingFrames": 1,
+      "contactPaddingFrames": 1,
+      "flatStance": true,
+      "targetPhaseHarmonics": 2,
+      "preserveReferenceHeading": true,
+      "repairStanceResidualLock": true,
+      "minimumKneeBendDegrees": 20,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 4,
+      "repairMirroredCycle": true
+    },
+    "Crouch_Walk_Left_Forward": {
+      "candidateSeconds": 5,
+      "boundaryContextFrames": 1,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "repairReference": true,
+      "repairHarmonics": 3,
+      "discoverySeconds": 5,
+      "repairMirroredCycle": true,
+      "constraintReference": "native_als"
+    },
+    "Crouch_Walk_Left_Backward": {
+      "candidateSeconds": 5,
+      "boundaryContextFrames": 1,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "constraintReference": "native_als",
+      "discoverySeconds": 5,
+      "repairMirroredCycle": true
+    },
+    "Sprint_Acceleration": {
+      "candidateSeconds": 4,
+      "boundaryContextFrames": 1,
+      "maximumConstraintCycles": 3,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "constraintReference": "generated_mirror",
+      "discoverySeconds": 4,
+      "constrainHandOrientations": true,
+      "repairMirroredCycle": true,
+      "constraintSource": "Run_Forward"
+    },
+    "Walk_Forward": {
+      "candidateSeconds": 5,
+      "boundaryContextFrames": 1,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "constraintReference": "native_als",
+      "discoverySeconds": 4,
+      "constrainHandOrientations": true,
+      "repairMirroredCycle": true,
+      "upperBodyIdleReference": "Idle"
+    },
+    "Run_Forward": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "boundaryContextFrames": 2,
+      "fullBodyPhaseFractions": [
+        0.041666666666666664,
+        0.08333333333333333,
+        0.5,
+        0.9166666666666666,
+        0.9583333333333334
+      ],
+      "supportAnchorCount": 6,
+      "supportWindowFraction": 0.75,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 4,
+      "repairRampFrames": 2,
+      "repairCycleIndex": 0,
+      "repairSeamSmoothingFrames": 1,
+      "contactPaddingFrames": 0,
+      "minimumKneeBendDegrees": 21,
+      "fitRegularization": 0.02,
+      "repairStanceResidualLock": true,
+      "discoverySeconds": 4,
+      "repairMirroredCycle": true
+    },
+    "Run_Backward": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "boundaryContextFrames": 1,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 2,
+      "repairRampFrames": 4,
+      "repairCycleIndex": 1,
+      "contactPaddingFrames": 1,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 4,
+      "repairMirroredCycle": true
+    },
+    "Crouch_Walk_Forward": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 2,
+      "boundaryContextFrames": 0,
+      "fullBodyPhaseFractions": [
+        0.125,
+        0.25,
+        0.375,
+        0.5,
+        0.625,
+        0.75,
+        0.875
+      ],
+      "preserveReferenceHeading": true,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "repairCycleIndex": 1,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 4
+    },
+    "Crouch_Walk_Backward": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 2,
+      "boundaryContextFrames": 0,
+      "fullBodyPhaseFractions": [
+        0.125,
+        0.25,
+        0.375,
+        0.5,
+        0.625,
+        0.75,
+        0.875
+      ],
+      "preserveReferenceHeading": true,
+      "targetPhaseHarmonics": 2,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constraintReference": "native_als",
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "repairCycleIndex": 1,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 4
+    },
+    "Crouch_Walk_Left": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "boundaryContextFrames": 1,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "repairCycleIndex": 1,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "discoverySeconds": 4,
+      "repairMirroredCycle": true
+    },
+    "Walk_Backward": {
+      "candidateSeconds": 5,
+      "boundaryContextFrames": 1,
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "supportAnchorCount": 4,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 3,
+      "repairRampFrames": 4,
+      "minimumKneeBendDegrees": 15,
+      "fitRegularization": 0.02,
+      "constraintReference": "native_als",
+      "discoverySeconds": 4,
+      "constrainHandOrientations": true,
+      "repairMirroredCycle": true
+    },
+    "Sprint": {
+      "candidateCycles": 3,
+      "fullBodyPhaseCycles": 3,
+      "boundaryContextFrames": 2,
+      "fullBodyPhaseFractions": [
+        0.041666666666666664,
+        0.08333333333333333,
+        0.5,
+        0.9166666666666666,
+        0.9583333333333334
+      ],
+      "supportAnchorCount": 6,
+      "supportWindowFraction": 0.75,
+      "supportPairSpacingSeconds": 0.22,
+      "maximumConstraintCycles": 3,
+      "maximumAnchorCorrectionMeters": 0.15,
+      "constrainHandOrientations": true,
+      "repairAfterGeneration": true,
+      "finalRepairHarmonics": 4,
+      "repairRampFrames": 2,
+      "repairCycleIndex": 0,
+      "repairSeamSmoothingFrames": 1,
+      "contactPaddingFrames": 0,
+      "minimumKneeBendDegrees": 21,
+      "fitRegularization": 0.02,
+      "repairStanceResidualLock": true,
+      "discoverySeconds": 3.0,
+      "repairMirroredCycle": true
+    }
+  },
+  "programmaticGaits": {
+    "Walk_Left_Backward": "Walk_Left_Forward",
+    "Crouch_Walk_Left_Backward": "Crouch_Walk_Left_Forward",
+    "Walk_Backward": "Walk_Forward"
+  },
+  "locomotionPosture": {
+    "policy": "locomotion-idle-forearm-v2",
+    "bodyMotionGain": 0.15,
+    "forearmMotionGain": 0.85,
+    "forearmSwingDegrees": 22.0,
+    "elbowRestDegrees": 45.0,
+    "referenceFraction": 0.5,
+    "stanceMode": "standing",
+    "forearmSwing": false,
+    "limits": {
+      "torsoForwardDegrees": 8.0,
+      "neckForwardDegrees": 8.0,
+      "headDownDegrees": 8.0,
+      "armAbductionDegrees": 12.0,
+      "upperArmMotionDegrees": 0.05,
+      "minimumHandTravelMeters": 0.08
+    }
+  }
+}

@@ -22,7 +22,10 @@ def complete_run(runner, authoring_result, *, pack=None, godot=None, dotnet=None
     if output.exists():raise ValueError('Full pipeline output exists; preserve evidence and choose a fresh run output')
     output.mkdir()
     receipt_path=output/'receipts.json';write_json(receipt_path,runner.results)
+    source_receipts=output/'source-receipts.json';write_json(source_receipts,runner.results)
     assets=[dict(node=k,identity=r['identity'],outputs=r['outputs']) for k,r in runner.results.items() if r['op']=='deliver']
+    for asset in assets:
+        asset['sourceAuthoringReceipts']=dict(file=str(source_receipts),sha256=file_hash(source_receipts))
     new_deliveries=len(assets)
     bundle_path=output/'authoring-bundle.json'
     write_json(bundle_path,dict(assets=assets,productionReady=False,status=authoring_result['status']))

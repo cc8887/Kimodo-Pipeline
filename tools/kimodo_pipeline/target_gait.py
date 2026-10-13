@@ -39,14 +39,18 @@ for prefix,short,speed in (('Walk','Walk',150.),('Run','Run',350.),('Crouch_Walk
             if short:
                 legacy='ALS_N_'+short+'_'+symbol+suffix
                 PILOTS[legacy]=(speed,kind);DIRECTIONS[legacy]=DIRECTIONS[native]
-PILOTS.update(A_Als_Sprint_Acceleration=(500.,'sprint_acceleration'),
+PILOTS.update(A_Als_Sprint=(600.,'sprint'), ALS_N_Sprint_F=(600.,'sprint'),
+              A_Als_Sprint_Acceleration=(500.,'sprint_acceleration'),
               ALS_N_Sprint_F_Impulse=(500.,'sprint_acceleration'),
+              A_Als_Walk_Backward=(150.,'walk_backward'), ALS_N_Walk_B=(150.,'walk_backward'),
               A_Als_Run_Backward=(350.,'run_backward'), ALS_N_Run_B=(350.,'run_backward'),
               A_Als_Crouch_Walk_Backward=(150.,'crouch_backward'),
               ALS_CLF_Walk_B=(150.,'crouch_backward'),
               ALS_CLF_Walk_L=(150.,'crouch_left'), ALS_CLF_Walk_R=(150.,'crouch_right'))
-DIRECTIONS.update(A_Als_Sprint_Acceleration=(0.,1.),ALS_N_Sprint_F_Impulse=(0.,1.))
+DIRECTIONS.update(A_Als_Sprint=(0.,1.),ALS_N_Sprint_F=(0.,1.),
+                  A_Als_Sprint_Acceleration=(0.,1.),ALS_N_Sprint_F_Impulse=(0.,1.))
 DIRECTIONS.update(A_Als_Run_Backward=(0.,-1.),ALS_N_Run_B=(0.,-1.))
+DIRECTIONS.update(A_Als_Walk_Backward=(0.,-1.),ALS_N_Walk_B=(0.,-1.))
 DIRECTIONS.update(A_Als_Crouch_Walk_Backward=(0.,-1.),ALS_CLF_Walk_B=(0.,-1.),
                   ALS_CLF_Walk_L=(1.,0.),ALS_CLF_Walk_R=(-1.,0.))
 ORIGINALS = {kind: name for name, (_, kind) in PILOTS.items() if name.startswith("A_Als_")}
@@ -133,10 +137,11 @@ def original_protocol():
                 asset_flat.extend(points[mask,side,:,2].tolist())
                 if kind in FORWARD_KINDS:
                     flat_heights.extend(points[mask, side, :, 2].tolist())
-        forefoot=kind=='sprint_acceleration'
+        forefoot=kind in ('sprint','sprint_acceleration')
         if not asset_flat and forefoot:
-            # Native acceleration plants its toes with the heels raised by
-            # 3.55cm or more; a flat-sole Walk contract is the wrong consumer.
+            # Native sprint variants retain toe support while the heel rolls;
+            # acceleration keeps the heel raised by at least 3.55 cm. Both use
+            # the same independently measured forefoot contract.
             slow=np.linalg.norm(velocity[...,:2],axis=-1)<=25.
             low=np.abs(points[...,2])<=.4
             for side in range(2):

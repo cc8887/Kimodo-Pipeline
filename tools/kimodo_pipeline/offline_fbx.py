@@ -20,13 +20,23 @@ def _fbx_quaternions(values):
 def mesh_binding_skeleton(skeleton, mesh_path):
     """Use the immutable target MESH's exact case-sensitive exported names."""
     import ufbx
-    scene=ufbx.load_file(str(mesh_path)); node_list=scene.nodes
     expected={n.lower() for n in skeleton['rawBoneNames']}
-    names={}
-    for node in node_list:
-        if node.name.lower() not in expected:continue
-        if node.name.lower() in names:raise ValueError('Ambiguous mesh bone name')
-        names[node.name.lower()]=node.name
+    def extract_names(scene):
+        # Child wrappers leave this scope while their native scene is still
+        # owned by the outer context. Return only copied Python strings.
+        names={};node_list=scene.nodes;node=None
+        try:
+            for node in node_list:
+                name=node.name
+                if name.lower() not in expected:continue
+                if name.lower() in names:raise ValueError('Ambiguous mesh bone name')
+                names[name.lower()]=name
+            return names
+        finally:
+            # Tracebacks retain frames on validation errors as well.
+            node=None;node_list=None
+    with ufbx.load_file(str(mesh_path)) as scene:
+        names=extract_names(scene)
     if set(names)!=expected:raise ValueError('Target mesh physical names do not cover the ALS skeleton')
     result=copy.deepcopy(skeleton)
     result['rawBoneNames']=[names[n.lower()] for n in skeleton['rawBoneNames']]

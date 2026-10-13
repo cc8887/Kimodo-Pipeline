@@ -182,10 +182,24 @@ def build_graph(contracts, rules):
         return key
 
     def generate(key, row, deps, anchors=(), prompt=None, duration=None, path=None):
-        params = dict(prompt=prompt or rules.get('motionPromptOverrides', {}).get(row['semanticName']) or row['promptDraft'], seconds=duration or rules['candidateSeconds'],
+        from .prompt_modules import resolve_prompt
+        intent = {}
+        if path and path.get('kind') == 'linear' and row['family'] == 'gait_cycle':
+            intent.update(phase='steady', contact='alternating',
+                          stance='crouching' if row['semanticName'].startswith('Crouch') else 'standing')
+            direction = {(0, 1): 'forward', (0, -1): 'backward', (1, 0): 'left', (-1, 0): 'right'}
+            if tuple(path.get('direction', [])) in direction:
+                intent['direction'] = direction[tuple(path['direction'])]
+        if (rules.get('locomotionPosture') or {}).get('policy') == 'locomotion-idle-forearm-v2':
+            intent['upperArmMotion'] = 'steady'
+        resolved = resolve_prompt(rules, row['semanticName'], row['promptDraft'], explicit_prompt=prompt,
+                                  expected_claims=intent)
+        params = dict(prompt=resolved['prompt'], seconds=duration or rules['candidateSeconds'],
                       fps=rules['fps'], seed=rules['seed'], model=rules['model'],
                       steps=rules['diffusionSteps'], anchors=list(anchors), rootPath=path,
                       semantic=row['semanticName'])
+        if resolved['receipt'] is not None:
+            params['promptModules'] = resolved['receipt']
         cfg = validate_cfg_weights(rules.get('generationCfgWeights'))
         if cfg is not None:
             params['cfgWeights'] = cfg
@@ -406,6 +420,8 @@ def build_graph(contracts, rules):
                     add(reference_node,'native_gait_reference',['rig:soma'],
                         indexPath='assets/config/refactored_animation_sources.json',source=row['source'],
                         expectedSpeedMps=path['velocity'],direction=path['direction'])
+                    if spec.get('nativePhaseEvidence'):
+                        nodes[reference_node]['params']['nativePhaseEvidence'] = True
                     if 'constraintSeamSmoothingFrames' in spec:
                         nodes[reference_node]['params']['seamSmoothingFrames'] = spec['constraintSeamSmoothingFrames']
                         nodes[reference_node]['params']['seamSmoothingMask'] = spec.get('constraintSeamSmoothingMask','all')
@@ -418,6 +434,13 @@ def build_graph(contracts, rules):
                     add(reference_node, 'periodic_repair', ['rig:soma', discovery], source=discovery,
                         expectedSpeedMps=path['velocity'], harmonics=spec.get('repairHarmonics', 4),
                         targetPeriodFrames=row['originalTiming']['sampledKeyCount']-1 if override else None)
+                if spec.get('constraintStyleReference'):
+                    if spec['constraintStyleReference'] != 'generated' or not spec.get('nativePhaseEvidence'):
+                        raise ValueError('Style pose constraints require generated style and verified native phases')
+                    style_reference='reference:'+name+':generated-style'
+                    add(style_reference,'gait_style_reference',['rig:soma',reference_node,discovery],
+                        reference=reference_node,style=discovery,fraction=.5)
+                    reference_node=style_reference
                 generate(candidate, row, [*deps, reference_node], [], prompt=override.get('prompt'), path=path, duration=duration)
                 nodes[candidate]['params'].update(gaitReference=reference_node,
                     targetPeriodSeconds=row['originalTiming']['playLength'],
@@ -431,10 +454,15 @@ def build_graph(contracts, rules):
                     nodes[candidate]['params']['maximumConstraintCycles'] = spec['maximumConstraintCycles']
                 for option in ('fullBodyPhaseCycles','supportAnchorCount','supportPairSpacingSeconds',
                                'supportWindowFraction','maximumAnchorCorrectionMeters','constrainHandOrientations',
-                               'footBoundaryContextFrames','preserveReferenceHeading'):
+                               'footBoundaryContextFrames','preserveReferenceHeading','preserveReferencePelvisPath',
+                               'poseConstraintMode','nativePhaseEvidence'):
                     if option in spec:nodes[candidate]['params'][option]=spec[option]
                 if 'cfgWeights' in spec:
                     nodes[candidate]['params']['cfgWeights'] = validate_cfg_weights(spec['cfgWeights'])
+                if not nodes[candidate]['params'].get('anchors') and not nodes[candidate]['params'].get('endEffectors'):
+                    # Gait materialization reads its measured reference; an unused
+                    # standing pose must not trigger an extra diffusion or encoding.
+                    nodes[candidate]['deps'] = ['rig:soma', reference_node]
                 selected_source = candidate
                 if spec.get('repairAfterGeneration'):
                     selected_source='repair:'+name+':generated'
@@ -450,6 +478,10 @@ def build_graph(contracts, rules):
                         bothSupportSeams=spec.get('repairBothSupportSeams',False),
                         stanceResidualLock=spec.get('repairStanceResidualLock',False),
                         stanceResidualPaddingFrames=spec.get('repairStanceResidualPaddingFrames',0))
+                    if spec.get('nativePhaseEvidence'):
+                        nodes[selected_source]['params']['nativePhaseEvidence'] = True
+                    for option in ('repairSelection','maximumRepairAttempts','maximumRepairCandidateCycles'):
+                        if option in spec:nodes[selected_source]['params'][option]=spec[option]
                 if spec.get('selectBestReference'):
                     if not spec.get('repairReference'):
                         raise ValueError('Best-reference selection requires a repaired reference')
@@ -520,6 +552,12 @@ def build_graph(contracts, rules):
             *([origin_motion] if origin_motion else [])],
             source=source, base=base, targetPlanarOrigin=origin, contract=row,
             requires=['target_rig_retarget', 'new_contact_sync_curve_notify_authoring', 'final_skeleton_acceptance'])
+    if rules.get('locomotionPosture'):
+        from .locomotion_style import configure
+        configure(nodes, contracts, rules['locomotionPosture'])
+    if rules.get('loopCrops'):
+        from .loop_crop_graph import configure as configure_loop_crops
+        configure_loop_crops(nodes, rules)
     order = topological_order(nodes)
     return {'schemaVersion': 1, 'status': 'authoring_dag_not_production_publish',
             'contractsDigest': digest(contracts), 'rulesDigest': digest(rules), 'rules': rules,

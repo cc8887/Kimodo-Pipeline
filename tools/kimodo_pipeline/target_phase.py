@@ -7,10 +7,82 @@ from .target_gait import PILOTS, DIRECTIONS, asset_name, _sole_geometry
 POLICY = 'target-vertical-extrema-phase-v1'
 
 
+def extend_trailing_low_support(raw, skeleton, source, contacts):
+    """At most one extra IK-intent key, corroborated by measured toe height."""
+    name = asset_name(source)
+    mask = np.asarray(contacts, dtype=bool)
+    count = raw['sampledKeyCount']
+    if name not in PILOTS or mask.shape != (count, 2) or not np.array_equal(mask[0], mask[-1]):
+        raise ValueError('Invalid periodic support intent for extension')
+    points, _, _ = _sole_geometry(raw, skeleton, PILOTS[name][0], DIRECTIONS[name])
+    heights = points[:-1, :, 1, 2]
+    result = mask[:-1].copy()
+    for side in range(2):
+        stable = mask[:-1, side]
+        if not stable.any() or not np.isfinite(heights[:, side]).all():
+            raise ValueError('Missing measurable low support for extension')
+        adjacent = np.roll(stable, 1) & ~stable
+        adjacent &= heights[:, side] <= np.max(heights[stable, side])+1.
+        if stable.sum()+adjacent.sum() <= count-4:
+            result[:, side] |= adjacent
+    return np.concatenate([result, result[:1]])
+
+
+def infer_verified_source_phases(raw, skeleton, source, source_gate, *, contact_mode):
+    """Project independently measured source FK phases, solely as IK intent.
+
+    Callers must validate the receipt's source bytes before entering here.
+    Target geometry must corroborate swing/low bands; final target gates remain
+    independent and do not consume this mask as a contact approval.
+    """
+    name = asset_name(source)
+    count = raw['sampledKeyCount']; period = count-1
+    fps = source_gate.get('fps', 0)
+    if (name not in PILOTS or period < 8 or not source_gate.get('pass')
+            or source_gate.get('outputFrameCount') != count
+            or not isinstance(fps, (int, float)) or not np.isfinite(fps) or fps <= 0
+            or abs(period/fps-raw['playLength']) > 1e-6
+            or abs(source_gate.get('expectedSpeedMps', -1)*100-PILOTS[name][0]) > 1e-6):
+        raise ValueError('Source phase repair needs an accepted same-time/speed FK gate')
+    if contact_mode not in ('toe', 'flat_sole'):
+        raise ValueError('Unknown source phase contact mode')
+    samples = np.asarray(source_gate.get('transformedDetection', {}).get('sampleContacts'))
+    if samples.shape != (count, 2, 2) or not np.isin(samples, (0, 1)).all():
+        raise ValueError('Invalid measured source FK contacts')
+    contacts = samples[:, :, 1].astype(bool) if contact_mode == 'toe' else samples.astype(bool).all(axis=-1)
+    if not np.array_equal(contacts[0], contacts[-1]):
+        raise ValueError('Source phase endpoints differ')
+    points, _, _ = _sole_geometry(raw, skeleton, PILOTS[name][0], DIRECTIONS[name])
+    heights = points[:-1, :, 1, 2] if contact_mode == 'toe' else points[:-1, :, :, 2].mean(axis=2)
+    starts, sides = [], []
+    for side, label in enumerate(('left', 'right')):
+        mask = contacts[:-1, side]
+        edges = np.flatnonzero(mask & ~np.roll(mask, 1))
+        if len(edges) != 1 or mask.sum() < 3 or mask.sum() > period-3:
+            raise ValueError('Source support must have one bounded stable window: '+label)
+        signal = heights[:, side]
+        excursion = float(np.ptp(signal))
+        if (not np.isfinite(signal).all() or excursion < 1.
+                or np.max(signal[mask]) > np.min(signal)+.3*excursion):
+            raise ValueError('Target vertical geometry contradicts source support: '+label)
+        starts.append(int(edges[0]))
+        sides.append(dict(side=label, windowFrames=np.flatnonzero(mask).tolist(), excursionCm=excursion,
+                          measuredHeightCm=signal.tolist()))
+    gap = abs(starts[0]-starts[1])/period
+    if not .35 <= gap <= .65:
+        raise ValueError('Source support windows do not alternate')
+    return dict(policy='verified-source-fk-target-phase-v1', passed=True, source=source,
+        purpose='bounded IK intent only; target acceptance remeasures geometry',
+        sourceMotionSha256=source_gate.get('outputMotionSha256'),
+        independentOfAuthoredContactCurves=True, targetVerticalGeometryCorroborated=True,
+        sampledKeyCount=count, playLengthSeconds=raw['playLength'], contactMode=contact_mode,
+        sides=sides, troughPhaseGap=gap, candidateContacts=contacts.astype(int).tolist())
+
+
 def infer_phases(raw, skeleton, source, *, harmonics=3, low_fraction=.1,
                  minimum_excursion_cm=1., minimum_window_seconds=.06, contact_mode='flat_sole'):
     name = asset_name(source)
-    if name not in PILOTS or PILOTS[name][1] == 'sprint_acceleration':
+    if name not in PILOTS:
         raise ValueError('No periodic phase contract: ' + name)
     count = raw['sampledKeyCount']; period = count - 1
     length = float(raw['playLength'])

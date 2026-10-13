@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from .target_phase import infer_phases
+from .target_phase import infer_phases, infer_verified_source_phases, extend_trailing_low_support
 from .target_cleanup import repair_periodic_gait
 from .target_gait import original_protocol, analyze_target_gait
 from .publish import world_pose
@@ -49,6 +49,82 @@ class TargetPhaseTests(unittest.TestCase):
             if original['bone'].lower() not in altered:
                 for field in ('positions','rotations','scales'):
                     np.testing.assert_allclose(original[field], fixed[field], atol=1e-12)
+
+    def test_both_sprint_cycles_use_forefoot_repair_with_unchanged_budgets(self):
+        for kind in ('sprint', 'sprint_acceleration'):
+            with self.subTest(kind=kind):
+                original = self.protocol['assets'][kind]
+                raw = copy.deepcopy(original['raw'])
+                pelvis = next(t for t in raw['tracks'] if t['bone'].lower() == 'pelvis')
+                for point in pelvis['positions']:
+                    point[2] += 3.
+                before = copy.deepcopy(raw)
+                self.assertFalse(analyze_target_gait(raw, self.skeleton, original['source'])['passed'])
+                repaired, phase, receipt = repair_periodic_gait(raw, self.skeleton, original['source'])
+                self.assertEqual('toe', phase['contactMode'])
+                self.assertTrue(analyze_target_gait(repaired, self.skeleton, original['source'])['passed'])
+                self.assertEqual(before, raw)
+                self.assertLessEqual(receipt['maximumAnkleCorrectionCm'], 8.)
+                self.assertLessEqual(receipt['maximumHipLoweringCm'], 5.)
+                for point in pelvis['positions']:
+                    point[2] += 20.
+                with self.assertRaisesRegex(ValueError, 'correction exceeds bound'):
+                    repair_periodic_gait(raw, self.skeleton, original['source'])
+
+    def source_fk_gate(self, original):
+        measured = analyze_target_gait(original['raw'], self.skeleton, original['source'])
+        contacts = np.asarray(measured['contacts'], bool).T
+        return dict(**{'pass': measured['passed']},
+                    outputFrameCount=original['raw']['sampledKeyCount'],
+                    fps=(original['raw']['sampledKeyCount']-1)/original['raw']['playLength'],
+                    expectedSpeedMps=measured['expectedSpeedCmS']/100,
+                    transformedDetection=dict(sampleContacts=np.repeat(contacts[:, :, None], 2, axis=2).astype(int).tolist()))
+
+    def test_measured_source_phase_fallback_repairs_then_remeasures_target(self):
+        original = self.protocol['assets']['sprint_acceleration']
+        raw = copy.deepcopy(original['raw'])
+        for track in raw['tracks']:
+            if track['bone'].lower() == 'pelvis':
+                for point in track['positions']:
+                    point[2] += 3.
+        before = copy.deepcopy(raw)
+        gate = self.source_fk_gate(original)
+        with patch('tools.kimodo_pipeline.target_phase.infer_phases', side_effect=ValueError('narrow target band')):
+            repaired, phase, report = repair_periodic_gait(raw, self.skeleton, original['source'], source_gate=gate)
+        self.assertEqual('verified-source-fk-target-phase-v1', phase['policy'])
+        self.assertEqual('narrow target band', phase['verticalOnlyInferenceFailure'])
+        self.assertTrue(analyze_target_gait(repaired, self.skeleton, original['source'])['passed'])
+        self.assertLessEqual(report['maximumAnkleCorrectionCm'], 8.)
+        self.assertLessEqual(report['maximumHipLoweringCm'], 5.)
+        self.assertEqual(before, raw)
+
+    def test_source_phase_fallback_rejects_failed_mismatched_and_geometry_contradicting_evidence(self):
+        original = self.protocol['assets']['sprint_acceleration']
+        gate = self.source_fk_gate(original)
+        for changed in (dict(gate, **{'pass': False}), dict(gate, outputFrameCount=3),
+                        dict(gate, expectedSpeedMps=6.), dict(gate, fps=60.), dict(gate, transformedDetection={})):
+            with self.assertRaises(ValueError):
+                infer_verified_source_phases(original['raw'], self.skeleton, original['source'], changed, contact_mode='toe')
+        poisoned = copy.deepcopy(gate)
+        samples = np.asarray(poisoned['transformedDetection']['sampleContacts'])
+        samples[:-1] = np.roll(samples[:-1], (len(samples)-1)//2, axis=0); samples[-1] = samples[0]
+        poisoned['transformedDetection']['sampleContacts'] = samples.tolist()
+        with self.assertRaisesRegex(ValueError, 'contradicts'):
+            infer_verified_source_phases(original['raw'], self.skeleton, original['source'], poisoned, contact_mode='toe')
+
+    def test_trailing_intent_extension_requires_low_geometry_and_never_changes_input(self):
+        raw=copy.deepcopy(self.original['raw']); raw.update(sampledKeyCount=21,playLength=20/30)
+        mask=np.zeros((21,2),bool);mask[0:3,0]=True;mask[10:13,1]=True;mask[-1]=mask[0]
+        points=np.zeros((21,2,2,3));points[...,2]=20
+        points[:3,0,:,2]=0;points[10:13,1,:,2]=0
+        points[3,0,:,2]=.5;points[13,1,:,2]=2.;points[-1]=points[0]
+        before=mask.copy()
+        with patch('tools.kimodo_pipeline.target_phase._sole_geometry',return_value=(points,None,None)):
+            extended=extend_trailing_low_support(raw,self.skeleton,self.original['source'],mask)
+        np.testing.assert_array_equal(mask,before)
+        self.assertTrue(extended[3,0]);self.assertFalse(extended[13,1])
+        self.assertEqual(1,int((extended & ~mask).sum()))
+        np.testing.assert_array_equal(extended[0],extended[-1])
 
     def synthetic(self, *, same_phase=False, cycles=1, offset=0):
         period = self.original['raw']['sampledKeyCount']-1
@@ -171,8 +247,9 @@ class TargetPhaseTests(unittest.TestCase):
         native=self.protocol['assets']['crouch_walk_left_backward']
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'input.json'; write_json(path,native['raw'])
+            gate_path=Path(directory)/'source-gate.json'; write_json(gate_path,self.source_fk_gate(native))
             job=dict(source=native['source'],edition='refactored',raw=str(path),
-                     contract=dict(targetGaitPolicy='als-forward-v1'))
+                     contract=dict(targetGaitPolicy='als-forward-v1'),gaitValidationReceipt=dict(file=str(gate_path)))
             with patch('tools.kimodo_pipeline.publish.validate_gait_receipt') as upstream:
                 result,_=prepare_target_raw(job,self.skeleton,self.skeleton,index,factor_root=False)
             upstream.assert_called_once_with(job)

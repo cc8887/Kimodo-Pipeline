@@ -192,6 +192,27 @@ class GraphTests(unittest.TestCase):
     def test_build_is_deterministic(self):
         self.assertEqual(digest(self.graph),digest(build_graph(self.contracts,self.rules)))
 
+    def test_modular_prompts_are_used_and_cannot_disagree_with_motion_contract(self):
+        rules = copy.deepcopy(self.rules)
+        rules['promptModules'] = read_json(PIPELINE_ROOT/'tools/kimodo_pipeline/prompt_module_examples.json')['promptModules']
+        graph = build_graph(self.contracts, rules)
+        prompt = graph['nodes']['candidate:Sprint']['params']
+        self.assertIn('upper arms held steady', prompt['prompt'])
+        self.assertEqual('Sprint', prompt['promptModules']['semantic'])
+        self.assertEqual('steady', prompt['promptModules']['expectedClaims']['phase'])
+        rules['promptModules']['motions']['Sprint']['remove'] = ['forward']
+        rules['promptModules']['motions']['Sprint']['add'] = ['backward']
+        with self.assertRaisesRegex(ValueError, 'direction'):
+            build_graph(self.contracts, rules)
+
+    def test_athletic_prompt_cannot_be_silently_overwritten_by_fixed_arm_profile(self):
+        rules = copy.deepcopy(self.rules)
+        rules['promptModules'] = read_json(PIPELINE_ROOT/'tools/kimodo_pipeline/prompt_module_examples.json')['promptModules']
+        rules['promptModules']['style'] = 'athletic'
+        rules['locomotionPosture'] = dict(policy='locomotion-idle-forearm-v2')
+        with self.assertRaisesRegex(ValueError, 'upperArmMotion'):
+            build_graph(self.contracts, rules)
+
 
 class CacheTests(unittest.TestCase):
     def test_prop_uses_own_rig_and_motion_and_invalidates_referenced_file(self):

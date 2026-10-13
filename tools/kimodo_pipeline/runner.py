@@ -278,6 +278,9 @@ class Runner:
                 seam_smoothing_mask=p.get('seamSmoothingMask','all'))
             m.save_motion(folder/'motion.npz',motion,rig)
             write_json(folder/'constraint-reference.json',receipt)
+            if p.get('nativePhaseEvidence'):
+                from .constraint_phase import build_native_phase_evidence
+                write_json(folder/'native-phase-evidence.json', build_native_phase_evidence(index, p['source'], motion, rig))
             return
         if op=='mirrored_gait_reference':
             from .gait import reflected_gait_reference,audit_candidate
@@ -291,6 +294,21 @@ class Runner:
                 parentOutputMotionSha256=gate['outputMotionSha256'],
                 referenceAudit=audit_candidate(motion,rig,gate['actualAuthoredSpeedMps']),
                 requires=['actual_generated_authoring_gate','target_gait_gate','runtime_gate']))
+            return
+        if op=='gait_style_reference':
+            from .style_reference import compose_upper_body_reference
+            from .constraint_phase import build_native_phase_evidence
+            native=self.output_of(p['reference']).get('native-phase-evidence.json')
+            if not native:raise ValueError('Style reference requires independently verified native gait phases')
+            evidence=read_json(native['path'])
+            motion,receipt=compose_upper_body_reference(self.motion(p['reference']),self.motion(p['style']),rig,
+                fraction=p.get('fraction',.5))
+            receipt.update(nativeMotion=self.output_of(p['reference'])['motion.npz'],
+                           generatedStyleMotion=self.output_of(p['style'])['motion.npz'])
+            m.save_motion(folder/'motion.npz',motion,rig)
+            write_json(folder/'constraint-reference.json',receipt)
+            write_json(folder/'native-phase-evidence.json',build_native_phase_evidence(
+                evidence['indexPath'],evidence['source'],motion,rig))
             return
         if op=='generate':
             if not self.repo:raise ValueError('Generation requires --kimodo-repo')
@@ -306,7 +324,26 @@ class Runner:
             elif p.get('gaitReference'):
                 from .gait_constraints import materialize_gait_constraints,GaitConstraintError
                 try:
-                    constraints, constraint_receipt=materialize_gait_constraints(p,self.motion(p['gaitReference']),rig)
+                    reference_motion=self.motion(p['gaitReference'])
+                    phase_evidence = None
+                    if p.get('nativePhaseEvidence'):
+                        evidence_output = self.output_of(p['gaitReference']).get('native-phase-evidence.json')
+                        if not evidence_output:
+                            raise ValueError('Missing independently verified native constraint phase evidence')
+                        phase_evidence = read_json(evidence_output['path'])
+                    if p.get('postureIdleReference'):
+                        from .locomotion_style import author_posture
+                        reference_motion,posture_reference=author_posture(reference_motion,
+                            self.motion(p['postureIdleReference']),rig,p['postureProfile'])
+                        write_json(folder/'posture-constraint-reference.json',posture_reference)
+                        if phase_evidence is not None:
+                            from .constraint_phase import build_native_phase_evidence
+                            phase_evidence = build_native_phase_evidence(phase_evidence['indexPath'],
+                                phase_evidence['source'], reference_motion, rig)
+                    constraints, constraint_receipt=materialize_gait_constraints(p,reference_motion,rig,
+                        phase_evidence=phase_evidence)
+                    if phase_evidence is not None:
+                        write_json(folder/'native-phase-evidence.json', phase_evidence)
                 except GaitConstraintError as error:
                     write_json(folder/'gait-constraints.json',error.receipt)
                     raise
@@ -398,6 +435,48 @@ class Runner:
                 raise
             receipt['sourceMotionSha256']=source_outputs['motion.npz']['sha256']
             write_json(folder/'mantle-validation.json',receipt)
+        elif op=='restyle_gait':
+            from .locomotion_style import author_posture
+            from .gait import revalidate_authored_cycle, _array_hash, GaitValidationError
+            for label in ('acceptedMotion','acceptedGait','acceptedReceipt'):
+                payload=p[label]
+                if file_hash(payload['file'])!=payload['sha256']:
+                    raise ValueError('Changed accepted restyle input: '+label)
+            parent=read_json(p['acceptedReceipt']['file'])
+            if (digest(parent['inputs'])!=parent['identity'] or parent.get('boundInput') or
+                    parent['inputs']['dependencyOutputs']['rig:soma']['rig.json']!=file_hash(self.output_of('rig:soma')['rig.json']['path'])):
+                raise ValueError('Restyle requires an executed source receipt on the same rig')
+            if parent['outputs']['motion.npz']['sha256']!=p['acceptedMotion']['sha256']:
+                raise ValueError('Accepted receipt does not bind its restyle input')
+            source=m.load_motion(p['acceptedMotion']['file'],rig)
+            gate=read_json(p['acceptedGait']['file'])
+            revalidate_authored_cycle(source,rig,gate)
+            motion,posture_report=author_posture(source,self.motion(p['idle']),rig,p['profile'])
+            gate=dict(gate,outputMotionSha256=_array_hash(motion['local_rot_mats'],motion['root_positions'],motion['fps']))
+            try:
+                revalidated=revalidate_authored_cycle(motion,rig,gate)
+            except GaitValidationError as error:
+                write_json(folder/'gait-validation.json',error.receipt)
+                m.save_motion(folder/'rejected-restyle.npz',motion,rig)
+                raise
+            gate.update(checks=revalidated['checks'],postureRevalidation=revalidated,
+                acceptedParent=p['acceptedReceipt'],upperBodyRestyle=posture_report,
+                note='New offline upper-body authoring on an accepted generated lower-body cycle; no new diffusion in this node')
+            write_json(folder/'posture-authoring.json',posture_report)
+            write_json(folder/'gait-validation.json',gate)
+            write_json(folder/'authoring-trajectory.json',gate['removedPlanarTrajectory'])
+        elif op=='idle_arm_posture':
+            from .locomotion_forearms import author_idle_arms,audit_posture
+            motion,posture_report=author_idle_arms(self.motion(p['source']),rig,p['profile'])
+            write_json(folder/'posture-authoring.json',posture_report)
+            posture=audit_posture(motion,motion,rig,p['profile'])
+            posture['idleNode']=node['id']
+            write_json(folder/'locomotion-posture-validation.json',posture)
+            if not posture['passed']:raise ValueError('Idle arm stabilization failed')
+        elif op=='idle_posture':
+            from .locomotion_style import author_posture
+            motion,posture_report=author_posture(self.motion(p['source']),self.motion(p['idle']),rig,p['profile'])
+            write_json(folder/'posture-authoring.json',posture_report)
         elif op=='rest':
             if 'standardTPoseGlobalRotations' not in rig:raise ValueError('T pose requires rig rest-basis conversion, not identity native rotations')
             global_rot=np.asarray(rig['standardTPoseGlobalRotations'])[None]
@@ -447,24 +526,135 @@ class Runner:
             from .periodic_repair import repair_periodic
             reference=p.get('contactReference')
             span=None
+            phase_evidence=None
             if reference:
                 period=p['targetPeriodFrames'];index=p['constrainedCycleIndex']
                 if not isinstance(index,int) or index<0:raise ValueError('Constrained cycle index must be nonnegative')
                 span=(index*period,(index+1)*period)
-            motion,repair_report=repair_periodic(self.motion(p['source']),rig,p['expectedSpeedMps'],harmonics=p['harmonics'],
-                target_period_frames=p.get('targetPeriodFrames'),constrained_cycle_span=span,
-                contact_reference=None if reference is None else self.motion(reference),
-                ramp_frames=p.get('rampFrames',3),minimum_knee_bend_degrees=p.get('minimumKneeBendDegrees',0),
+                if p.get('nativePhaseEvidence'):
+                    entry=self.output_of(reference).get('native-phase-evidence.json')
+                    if not entry:raise ValueError('Missing native contact phase evidence for periodic repair')
+                    phase_evidence=read_json(entry['path'])
+            options=dict(ramp_frames=p.get('rampFrames',3),minimum_knee_bend_degrees=p.get('minimumKneeBendDegrees',0),
                 fit_regularization=p.get('fitRegularization',.002),enforce_sole_clearance=p.get('enforceSoleClearance',False),
-                contact_padding_frames=p.get('contactPaddingFrames',0),
-                flat_stance=p.get('flatStance',False),seam_smoothing_frames=p.get('seamSmoothingFrames',0),
+                flat_stance=p.get('flatStance',False),
                 stabilize_knee_poles=p.get('stabilizeKneePoles',False),both_support_seams=p.get('bothSupportSeams',False),
                 stance_residual_lock=p.get('stanceResidualLock',False),
                 stance_residual_padding_frames=p.get('stanceResidualPaddingFrames',0))
+            if p.get('repairSelection'):
+                if p['repairSelection']!='bounded':raise ValueError('Unknown periodic repair selection policy')
+                from .repair_selection import select_periodic_repair, RepairSelectionError
+                try:
+                    motion,repair_report=select_periodic_repair(self.motion(p['source']),rig,p['expectedSpeedMps'],
+                        target_period_frames=p['targetPeriodFrames'],
+                        contact_reference=None if reference is None else self.motion(reference),
+                        contact_phase_evidence=phase_evidence,repair_options=options,
+                        maximum_candidate_cycles=p.get('maximumRepairCandidateCycles',4),
+                        maximum_attempts=p.get('maximumRepairAttempts',24))
+                except RepairSelectionError as error:
+                    write_json(folder/'periodic-repair-selection.json',error.receipt)
+                    raise
+                write_json(folder/'periodic-repair-selection.json',repair_report['repairSelection'])
+            else:
+                motion,repair_report=repair_periodic(self.motion(p['source']),rig,p['expectedSpeedMps'],harmonics=p['harmonics'],
+                    target_period_frames=p.get('targetPeriodFrames'),constrained_cycle_span=span,
+                    contact_reference=None if reference is None else self.motion(reference),
+                    contact_padding_frames=p.get('contactPaddingFrames',0),
+                    seam_smoothing_frames=p.get('seamSmoothingFrames',0),contact_phase_evidence=phase_evidence,**options)
             write_json(folder/'periodic-repair.json',repair_report)
             if not repair_report['after']['pass']:
                 m.save_motion(folder/'rejected-repair.npz',motion,rig)
                 raise ValueError('Periodic reference repair failed its independent authoring gate')
+        elif op=='loop_crop':
+            from .loop_segment import crop_loop,tile_loop
+            from .loop_seam import repair_loop_seam
+            from .gait import audit_candidate
+            crop_source=self.motion(p['source'])
+            crop_start,crop_end=p['startFrame'],p['endFrameInclusive']
+            parent_repair=None
+            if p.get('contactReference'):
+                from .periodic_repair import repair_periodic
+                reference=p['contactReference']
+                entry=self.output_of(reference).get('native-phase-evidence.json')
+                if not entry:raise ValueError('Loop contact repair requires independent native phase evidence')
+                period=crop_end-crop_start
+                if crop_start%period:
+                    raise ValueError('Native-phase contact repair requires an aligned source span')
+                crop_source,parent_repair=repair_periodic(crop_source,rig,p['expectedSpeedMps'],
+                    constrained_cycle_span=[crop_start,crop_end],target_period_frames=period,
+                    contact_reference=self.motion(reference),contact_phase_evidence=read_json(entry['path']),
+                    harmonics=p.get('harmonics',3),ramp_frames=p.get('contactRampFrames',4),minimum_knee_bend_degrees=p.get('contactMinimumKneeBendDegrees',15),
+                    fit_regularization=.02,enforce_sole_clearance=True,include_correction_paths=True,
+                    contact_padding_frames=p.get('contactPaddingFrames',0))
+                write_json(folder/'loop-contact-repair.json',parent_repair)
+                # Constructed repeats are a workspace for a single source span.
+                # Their failed intermediate gate is retained; final cleanup must
+                # still pass the unchanged independent output gate.
+                crop_start,crop_end=period,2*period
+            final_seam=p.get('finalSeamRepair',True)
+            if not isinstance(final_seam,bool):raise ValueError('finalSeamRepair must be boolean')
+            loop,loop_report=crop_loop(crop_source,rig,crop_start,crop_end,seam_frames=p.get('seamFrames',3),
+                close=not final_seam,match_tangents=p.get('matchTangents',True),include_correction_paths=True)
+            loop_report['requestedSourceSpan']=[p['startFrame'],p['endFrameInclusive']]
+            prior_paths={key:np.asarray(value) for key,value in loop_report['correctionPaths'].items()}
+            if parent_repair is not None:
+                from .periodic_repair import _CorrectionBudget
+                prior=parent_repair['correctionPaths'];extra=loop_report['correctionPaths']
+                keys=('rotationDegrees','ankleMeters','rootMeters')
+                arrays=[np.asarray(prior[key])[crop_start:crop_end+1] for key in keys]
+                budget=_CorrectionBudget(rig,crop_end-crop_start,*arrays)
+                budget.add('local_loop_closure',*[np.asarray(extra[key]) for key in keys])
+                combined=budget.report({key:float(np.asarray(prior[key]).max()+np.asarray(extra[key]).max()) for key in keys})
+                combined['limits']=dict(rotationDegrees=20.,ankleMeters=.15,rootMeters=.05)
+                loop_report['cumulativeCorrectionBudget']=combined
+                prior_paths=budget.paths
+                write_json(folder/'loop-crop.json',loop_report)
+                if any(combined['peaks'][key]['value']>limit for key,limit in combined['limits'].items()):
+                    raise ValueError('Combined contact repair and crop exceed original correction bounds')
+            if p.get('postureProfile'):
+                from .locomotion_style import author_posture
+                loop,posture_report=author_posture(loop,self.motion(p['postureValidationIdle']),rig,p['postureProfile'])
+                write_json(folder/'posture-authoring.json',posture_report)
+                loop_report['postCropPosture']=posture_report
+            joint_seam=p.get('jointContactSeam',False)
+            if type(joint_seam) is not bool:raise ValueError('jointContactSeam must be boolean')
+            if joint_seam:
+                from .loop_contact_solver import solve_loop_contacts
+                if not final_seam or parent_repair is None:
+                    raise ValueError('Joint loop repair requires the verified contact reference and final seam stage')
+                m.save_motion(folder/'pre-seam-loop.npz',loop,rig)
+                loop,seam_report=solve_loop_contacts(loop,rig,loop_report['removedPlanarTrajectory']['displacement'],
+                    parent_repair['repairContactIntent'],prior_paths=prior_paths,
+                    max_evaluations=p.get('jointMaximumEvaluations',100),seam_weight=p.get('jointSeamWeight',1.),
+                    support_weight=p.get('jointSupportWeight',1.),optimize_shared_anchor=p.get('jointOptimizeSharedAnchor',False),
+                    near_ground_weight=p.get('jointNearGroundWeight',1.),optimize_pelvis=p.get('jointOptimizePelvis',False))
+                write_json(folder/'joint-loop-solver.json',seam_report)
+                loop_report['finalSeamRepair']=seam_report
+                loop_report['gateOrder']=['crop','contact_and_posture_authoring','joint_contact_seam_repair','independent_authoring_gate']
+            elif final_seam:
+                # All source/style changes precede repair. Only the final
+                # result is eligible for the unchanged independent gait gate.
+                m.save_motion(folder/'pre-seam-loop.npz',loop,rig)
+                try:
+                    loop,seam_report=repair_loop_seam(loop,rig,window_frames=p.get('seamFrames',3),
+                        anchor=p.get('seamAnchor','last'),prior_paths=prior_paths,
+                        playback_displacement=loop_report['removedPlanarTrajectory']['displacement'],
+                        expected_speed_mps=p['expectedSpeedMps'])
+                except ValueError as error:
+                    if hasattr(error,'seam_report'):write_json(folder/'loop-seam-repair.json',error.seam_report)
+                    raise
+                write_json(folder/'loop-seam-repair.json',seam_report)
+                loop_report['finalSeamRepair']=seam_report
+                loop_report['gateOrder']=['crop','contact_and_posture_authoring','anchored_seam_repair','independent_authoring_gate']
+            motion=tile_loop(loop,rig,displacement=loop_report['removedPlanarTrajectory']['displacement'])
+            loop_audit=audit_candidate(motion,rig,p['expectedSpeedMps'])
+            loop_report['playbackAuthoringAudit']=loop_audit
+            loop_report['repeatedPlaybackIsIndependentGeneratedCycles']=False
+            write_json(folder/'loop-crop.json',loop_report)
+            m.save_motion(folder/'single-loop.npz',loop,rig)
+            if not loop_audit['pass'] or (joint_seam and not seam_report['passed']):
+                m.save_motion(folder/'rejected-loop-playback.npz',motion,rig)
+                raise ValueError('Single-loop crop failed its independent authoring gate')
         elif op=='gait_selection':
             from .gait import audit_candidate
             choices=[]
@@ -490,6 +680,20 @@ class Runner:
             except GaitValidationError as error:
                 write_json(folder/'gait-validation.json',error.receipt)
                 raise
+            posture_final=p.get('postureAlreadyFinal',False)
+            if type(posture_final) is not bool:raise ValueError('postureAlreadyFinal must be boolean')
+            if posture_final:
+                finalized=self.output_of(p['source']).get('loop-crop.json')
+                if not finalized or not read_json(finalized['path']).get('playbackAuthoringAudit',{}).get('pass'):
+                    raise ValueError('Final posture preservation requires the independently accepted loop')
+            if p.get('postureProfile',{}).get('policy')=='locomotion-idle-forearm-v2' and not posture_final:
+                from .locomotion_style import author_posture
+                from .gait import _array_hash,revalidate_authored_cycle
+                motion,posture_report=author_posture(motion,self.motion(p['postureValidationIdle']),rig,p['postureProfile'])
+                gait_receipt=dict(gait_receipt,outputMotionSha256=_array_hash(motion['local_rot_mats'],motion['root_positions'],motion['fps']),
+                    upperBodyRestyle=posture_report)
+                gait_receipt['postureRevalidation']=revalidate_authored_cycle(motion,rig,gait_receipt)
+                write_json(folder/'posture-authoring.json',posture_report)
             write_json(folder/'gait-validation.json',gait_receipt)
             write_json(folder/'authoring-trajectory.json',gait_receipt['removedPlanarTrajectory'])
         elif op=='loop':motion=m.loop_candidate(self.motion(p['source']),p['seconds'],p['startFraction'],rig,p['removeHeading'],p['removeTranslation'])
@@ -506,6 +710,13 @@ class Runner:
                         'curveNamesToAuthor':row['originalCurveNames'],
                         'curvePolicy':row['curveAndNotifyPolicy'],
                         'note':'Retarget full pose and reference together; compute additive once on target rig. Original curve keys/events were not copied.'}
+            if row.get('targetLocomotionPosturePolicy'):
+                posture=self.output_of(p['source']).get('locomotion-posture-validation.json')
+                if not posture or read_json(posture['path']).get('passed') is not True:
+                    raise ValueError('Locomotion delivery requires its executed posture gate')
+                source_payload=self.output_of(p['source'])['motion.npz']
+                asset_metadata['locomotionPostureReceipt']=dict(file=posture['path'],sha256=posture['sha256'],
+                    sourceMotionFile=source_payload['path'],sourceMotionSha256=source_payload['sha256'])
             if row.get('sampledPosePolicy'):
                 outputs=self.output_of(p['source'])
                 sampling=outputs.get('pose-sampling.json')
@@ -562,10 +773,22 @@ class Runner:
                 asset_metadata['airTrajectory']=dict(file=trajectory['path'],sha256=trajectory['sha256'])
             if p['base']:m.save_motion(folder/'additive-reference-full-pose.npz',self.motion(p['base']),rig)
         else:raise ValueError(f'Unknown operation {op}')
-        if op in ('gait_cycle', 'mirror'):
+        if p.get('postureValidationIdle') and p['postureProfile']['policy']=='locomotion-idle-forearm-v2' and op not in ('gait_cycle','restyle_gait','idle_posture','loop_crop'):
+            from .locomotion_style import author_posture
+            motion,posture_report=author_posture(motion,self.motion(p['postureValidationIdle']),rig,p['postureProfile'])
+            write_json(folder/'posture-authoring.json',posture_report)
+            gate_path=folder/'gait-validation.json'
+            if gate_path.exists():
+                from .gait import _array_hash,revalidate_authored_cycle
+                gate=read_json(gate_path)
+                gate.update(outputMotionSha256=_array_hash(motion['local_rot_mats'],motion['root_positions'],motion['fps']),
+                    upperBodyRestyle=posture_report)
+                gate['postureRevalidation']=revalidate_authored_cycle(motion,rig,gate)
+                write_json(gate_path,gate)
+        if op in ('gait_cycle', 'mirror', 'restyle_gait'):
             idle = p.get('upperBodyIdleReference')
             limits = p.get('upperBodyPolicy', {})
-            inherited = self.output_of(p['source']).get('upper-body-validation.json')
+            inherited = self.output_of(p['source']).get('upper-body-validation.json') if p.get('source') else None
             if not idle and inherited:
                 previous = read_json(inherited['path'])
                 idle, limits = previous['idleNode'], previous['limits']
@@ -577,8 +800,18 @@ class Runner:
                 if not upper['passed']:
                     m.save_motion(folder/'rejected-upper-body.npz', motion, rig)
                     raise ValueError('Walk upper-body posture exceeds its generated Idle reference limits')
+        if p.get('postureValidationIdle'):
+            from .locomotion_style import audit_posture
+            posture=audit_posture(motion,self.motion(p['postureValidationIdle']),rig,p['postureProfile'])
+            posture['idleNode']=p['postureValidationIdle']
+            write_json(folder/'locomotion-posture-validation.json',posture)
+            if not posture['passed']:
+                m.save_motion(folder/'rejected-locomotion-posture.npz',motion,rig)
+                raise ValueError('Locomotion posture exceeds its Idle-relative limits')
         m.save_motion(folder/'motion.npz',motion,rig)
         if op=='deliver':
+            if asset_metadata.get('locomotionPostureReceipt'):
+                asset_metadata['locomotionPostureReceipt']['deliveredMotionSha256']=file_hash(folder/'motion.npz')
             if asset_metadata.get('poseSamplingReceipt'):
                 asset_metadata['poseSamplingReceipt']['deliveredMotionSha256']=file_hash(folder/'motion.npz')
             if asset_metadata.get('airValidationReceipt'):

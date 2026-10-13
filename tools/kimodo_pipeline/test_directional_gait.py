@@ -50,7 +50,13 @@ class DirectionalRecipeTests(unittest.TestCase):
         self.assertIn('motion:Run_Forward', node['deps'])
         self.assertEqual('gait_cycle', self.graph['nodes']['motion:Sprint_Acceleration']['op'])
         order = topological_order(self.graph['nodes'], ['motion:Sprint_Acceleration'])
-        self.assertLess(order.index('motion:Run_Forward'), order.index('candidate:Sprint_Acceleration'))
+        # A separately requested discovery consumes Run, while the native-conditioned
+        # production candidate must not build an unused discovery or Run dependency.
+        discovery_order = topological_order(self.graph['nodes'], ['candidate:Sprint_Acceleration:discovery'])
+        self.assertLess(discovery_order.index('motion:Run_Forward'), discovery_order.index('candidate:Sprint_Acceleration:discovery'))
+        self.assertNotIn('motion:Run_Forward', order)
+        self.assertNotIn('candidate:Sprint_Acceleration:discovery', order)
+        self.assertLess(order.index('reference:Sprint_Acceleration:native-als'), order.index('candidate:Sprint_Acceleration'))
         self.assertEqual(5,node['params']['rootPath']['velocity'])
         candidate=self.graph['nodes']['candidate:Sprint_Acceleration']
         self.assertEqual(3,candidate['params']['fullBodyPhaseCycles'])

@@ -11,13 +11,158 @@ import numpy as np
 
 from .derived import POSE_POLICY, sample_pose, reuse_upstream, retain_base_deliveries, validate_pose_delivery
 from .graph import build_graph, digest, load_rules, read_json, topological_order
-from .runner import Runner, write_json
+from .runner import Runner, write_json, file_hash
 from .test_pipeline import rig_fixture, clip
 
 ROOT=asset_root()
 
 
 class DerivedTests(unittest.TestCase):
+    def test_composed_receipt_collision_uses_verified_delivery_origin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);rig=dict(outputs={'rig.json':dict(sha256='same-rig')})
+            original=root/'original.json'
+            write_json(original,{'existing':dict(identity='certified',outputs={})})
+            origin=dict(file=str(original),sha256=file_hash(original))
+            base=dict(node='existing',identity='certified',outputs={},sourceAuthoringReceipts=origin)
+            write_json(root/'authoring.json',dict(assets=[base]))
+            write_json(root/'receipts.json',{'rig:soma':rig,'existing':dict(identity='unselected',outputs={})})
+            write_json(root/'retarget.json',dict(authoringBundle=str(root/'authoring.json')))
+            pack=root/'assets/generated/als_nonprop_test/resource-pack.json';pack.parent.mkdir(parents=True)
+            write_json(pack,dict(files=[],nativeRetargetBundle=str(root/'retarget.json')))
+            assets,receipts=retain_base_deliveries(pack,[],{'rig:soma':rig,'existing':dict(identity='another-branch')})
+            self.assertEqual(assets,[base])
+            self.assertEqual(receipts['existing']['identity'],'certified')
+            write_json(original,{'existing':dict(identity='tampered',outputs={})})
+            with self.assertRaisesRegex(ValueError,'dependency evidence changed'):
+                retain_base_deliveries(pack,[],{'rig:soma':rig})
+
+    def reuse_fixture(self, root, *, modular=False):
+        params = dict(semantic='Run', prompt='A person runs forward.', model='Kimodo-SOMA-RP-v1.1',
+                      fps=30, seconds=3., seed=23, steps=100, cfgWeights=[2., 2.],
+                      anchors=[], rootPath=dict(kind='linear', velocity=3.5, direction=[0, 1]),
+                      postProcessing=True)
+        if modular:
+            from .prompt_modules import compile_prompt
+            compiled = compile_prompt(dict(schemaVersion=1, styles={'neutral': []},
+                modules={'run': dict(slot='action', text='runs forward', claims={'action': 'run'})},
+                motions={'Run': dict(modules=['run'])}), 'Run')
+            params.update(prompt=compiled['prompt'], promptModules=compiled['receipt'])
+        graph = dict(nodes={'rig:soma': dict(id='rig:soma', op='rig', deps=[], params={}),
+            'candidate': dict(id='candidate', op='generate', deps=['rig:soma'], params=params)},
+            rules=dict(fps=30), rulesDigest='original-catalog')
+        (root/'source.npz').write_bytes(b'content-addressed source fixture')
+        inputs = dict(node=copy.deepcopy(graph['nodes']['candidate']),
+                      dependencyOutputs={'rig:soma': {'rig.json': 'same-rig'}})
+        receipt = dict(node='candidate', op='generate', inputs=inputs, identity=digest(inputs), boundInput=False,
+                       outputs={'motion.npz': dict(path=str(root/'source.npz'), sha256=file_hash(root/'source.npz'))})
+        path = root/'receipts.json'
+        write_json(path, {'candidate': receipt})
+        return graph, receipt, path
+
+    def test_changed_generation_intent_never_reuses_old_motion(self):
+        changes = dict(prompt='A person runs with graceful forearm motion.', model='other-model', fps=60,
+                       seconds=4., seed=24, steps=50, cfgWeights=[1., 3.], postProcessing=False,
+                       rootPath=dict(kind='linear', velocity=6., direction=[0, 1]),
+                       anchors=[dict(source='pose', at=.5, fraction=.2)],
+                       targetPeriodSeconds=.6, poseConstraintMode='lower_body',
+                       supportAnchorCount=6, postureProfile={'bodyMotionGain': .2})
+        with tempfile.TemporaryDirectory() as directory:
+            graph, receipt, path = self.reuse_fixture(Path(directory))
+            self.assertEqual('reuse_motion', reuse_upstream(graph, [path])['nodes']['candidate']['op'])
+            for field, value in changes.items():
+                with self.subTest(field=field):
+                    changed = copy.deepcopy(graph)
+                    changed['nodes']['candidate']['params'][field] = value
+                    self.assertEqual('generate', reuse_upstream(changed, [path])['nodes']['candidate']['op'])
+                    self.assertEqual('external', reuse_upstream(changed, [path], derived_only=True)['nodes']['candidate']['op'])
+            # Explicit and implicit defaults express identical generation.
+            del graph['nodes']['candidate']['params']['postProcessing']
+            self.assertEqual('reuse_motion', reuse_upstream(graph, [path])['nodes']['candidate']['op'])
+
+    def test_modular_prompt_reuse_ignores_unused_catalog_but_binds_effective_modules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            graph, receipt, path = self.reuse_fixture(Path(directory), modular=True)
+            graph['rulesDigest'] = 'unrelated-catalog-edit'
+            graph['rules']['promptModules'] = {'unusedCatalogEntry': 'does not affect this prompt'}
+            modular = graph['nodes']['candidate']['params']['promptModules']
+            modular.update(style='renamed-profile-same-effective-modules', omittedModules=['unused-standing-style'])
+            self.assertEqual('reuse_motion', reuse_upstream(graph, [path])['nodes']['candidate']['op'])
+            modular['claims']['tone'] = 'calm'
+            modular['sha256'] = digest({key: value for key, value in modular.items()
+                                        if key not in ('sha256', 'style', 'omittedModules')})
+            self.assertEqual('generate', reuse_upstream(graph, [path])['nodes']['candidate']['op'])
+            modular['sha256'] = 'changed-without-binding-effective-modules'
+            with self.assertRaisesRegex(ValueError, 'fingerprint'):
+                reuse_upstream(graph, [path])
+
+    def test_reusing_a_gait_cannot_hide_its_changed_generated_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph, parent, path = self.reuse_fixture(root)
+            cycle = dict(id='cycle', op='gait_cycle', deps=['rig:soma', 'candidate'],
+                         params=dict(source='candidate', targetCount=25))
+            graph['nodes']['cycle'] = cycle
+            write_json(root/'gate.json', {'pass': True})
+            write_json(root/'trajectory.json', {'positions': []})
+            hashes = {name: output['sha256'] for name, output in parent['outputs'].items()}
+            inputs = dict(node=copy.deepcopy(cycle), dependencies={'candidate': parent['identity']},
+                dependencyOutputs={'rig:soma': {'rig.json': 'same-rig'}, 'candidate': hashes})
+            receipt = dict(node='cycle', op='gait_cycle', inputs=inputs, identity=digest(inputs), boundInput=False,
+                outputs=dict(parent['outputs'], **{
+                    'gait-validation.json': dict(path=str(root/'gate.json'), sha256=file_hash(root/'gate.json')),
+                    'authoring-trajectory.json': dict(path=str(root/'trajectory.json'), sha256=file_hash(root/'trajectory.json'))}))
+            write_json(path, {'candidate': parent, 'cycle': receipt})
+            reused = reuse_upstream(graph, [path])
+            self.assertEqual('reuse_motion', reused['nodes']['cycle']['op'])
+            self.assertIn('candidate', reused['nodes']['cycle']['deps'])
+            graph['nodes']['candidate']['params']['prompt'] = 'A person runs with a new upper-body style.'
+            rejected = reuse_upstream(graph, [path])
+            self.assertEqual('generate', rejected['nodes']['candidate']['op'])
+            self.assertEqual('gait_cycle', rejected['nodes']['cycle']['op'])
+            graph['nodes']['candidate'] = copy.deepcopy(parent['inputs']['node'])
+            write_json(path, {'cycle': receipt})
+            self.assertEqual('gait_cycle', reuse_upstream(graph, [path])['nodes']['cycle']['op'])
+
+    def test_reuse_rejects_changed_constraint_dependency_motion_at_execution(self):
+        from .derived import handle_reuse
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph, receipt, path = self.reuse_fixture(root)
+            reused = reuse_upstream(graph, [path])['nodes']['candidate']
+            reused['params']['dependencyMotionHashes'] = {'reference': {'motion.npz': 'old-motion'}}
+            runner = SimpleNamespace(output_of=lambda key: {'rig.json': {'sha256': 'same-rig'}}
+                if key == 'rig:soma' else {'motion.npz': {'sha256': 'changed-motion'}})
+            with self.assertRaisesRegex(ValueError, 'generation dependency differs'):
+                handle_reuse(runner, reused, root)
+
+    def test_changed_anchor_intent_invalidates_only_its_actual_consumer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph, receipt, path = self.reuse_fixture(root)
+            reference = dict(id='reference', op='freeze', deps=['rig:soma'], params=dict(fraction=.2, count=1))
+            graph['nodes']['reference'] = reference
+            graph['nodes']['unused'] = dict(id='unused', op='generate', deps=['rig:soma'],
+                                             params=dict(prompt='An unrelated action.'))
+            candidate = graph['nodes']['candidate']
+            candidate['deps'].extend(['reference', 'unused'])
+            candidate['params']['anchors'] = [dict(source='reference', at=0., sourceFrame=0)]
+            parent_inputs = dict(node=copy.deepcopy(reference), dependencyOutputs={'rig:soma': {'rig.json': 'same-rig'}})
+            parent = dict(node='reference', op='freeze', inputs=parent_inputs, identity=digest(parent_inputs),
+                          outputs=receipt['outputs'])
+            receipt['inputs'].update(node=copy.deepcopy(candidate), dependencies={'reference': parent['identity']})
+            receipt['inputs']['dependencyOutputs']['reference'] = {
+                name: output['sha256'] for name, output in parent['outputs'].items()}
+            receipt['identity'] = digest(receipt['inputs'])
+            write_json(path, {'candidate': receipt, 'reference': parent})
+            reused = reuse_upstream(graph, [path])
+            self.assertEqual('reuse_motion', reused['nodes']['candidate']['op'])
+            self.assertEqual(['rig:soma', 'reference'], reused['nodes']['candidate']['deps'])
+            graph['nodes']['unused']['params']['prompt'] = 'Changed but still not a constraint input.'
+            self.assertEqual('reuse_motion', reuse_upstream(graph, [path])['nodes']['candidate']['op'])
+            graph['nodes']['reference']['params']['fraction'] = .7
+            self.assertEqual('generate', reuse_upstream(graph, [path])['nodes']['candidate']['op'])
+
     def test_target_pose_gate_rejects_changed_body_even_with_updated_file_hash(self):
         from .motion import freeze, save_motion
         from .runner import file_hash
@@ -87,7 +232,8 @@ class DerivedTests(unittest.TestCase):
             pack.parent.mkdir(parents=True)
             write_json(pack,dict(files=[],nativeRetargetBundle=str(root/'retarget.json')))
             assets,receipts=retain_base_deliveries(pack,[new],{'rig:soma':rig,'replace':dict(identity='new')})
-            self.assertEqual(assets,[base,new])
+            self.assertEqual(assets,[dict(base,sourceAuthoringReceipts=dict(
+                file=str(root/'receipts.json'),sha256=file_hash(root/'receipts.json'))),new])
             self.assertEqual(receipts['existing']['identity'],'base')
             self.assertEqual(receipts['replace']['identity'],'new')
 
