@@ -249,14 +249,17 @@ def build_graph(contracts, rules):
             candidate = 'candidate:' + name
             # No dependency on the generated Stand pose, no fixed-height end
             # stand pin and no gait mirror/loop operation for contact actions.
-            hands = 'both hands' if len(spec['hands']) == 2 else spec['hands'][0] + ' hand'
-            prompt = ('A person mantles onto a ' + ('high' if 'High' in name else 'low') +
-                ' ledge, planting ' + hands + ' on the top surface, palms down and fingers forward. '
-                'Keep the supporting palms fixed while pulling and pushing the body up, '
-                'then release the hands and finish standing with both feet on the ledge.')
+            from .mantle_prompt import resolve_prompt
+            prompt, prompt_receipt = resolve_prompt(name, spec, rules)
             generate(candidate, row, [native], [], prompt=prompt,
                      duration=max(2., row['originalTiming']['sampledKeyCount']/rules['fps']), path=None)
             nodes[candidate]['params']['mantleReference'] = native
+            nodes[candidate]['params']['mantlePromptReceipt'] = prompt_receipt
+            if rules.get('mantleConstraintPolicy') is not None:
+                policy = rules['mantleConstraintPolicy']
+                if policy not in ('legacy-reference-v1', 'sparse-contact-v1'):
+                    raise ValueError('Unknown Mantle constraint policy: ' + str(policy))
+                nodes[candidate]['params']['mantleConstraintPolicy'] = policy
             add(key, 'mantle', ['rig:soma', candidate, native], source=candidate,
                 reference=native, semantic=name, policy=POLICY)
         elif name in programmatic:

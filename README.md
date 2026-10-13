@@ -64,7 +64,8 @@ python tools/produce_als_resources.py run --scope run --keep-going
 | Run | `tools/kimodo_pipeline/run_rules.json` |
 | Crouch | `tools/kimodo_pipeline/crouch_rules.json` |
 | Walk、方向步态、默认非道具范围 | `tools/kimodo_pipeline/directional_gait_rules.json`、`tools/kimodo_pipeline/non_prop_rules.json` |
-| Air、Mantle 和部分固定分支 | `tools/kimodo_pipeline/air.py`、`graph.py` |
+| Mantle | `mantle_prompt_modules.json`、`mantle_prompt_*_rules.json`；模块和完整覆盖均写入图中 |
+| Air 和部分固定分支 | `tools/kimodo_pipeline/air.py`、`graph.py` |
 
 具体规则、继承关系和安全试改流程见[入门教程的 Prompt 章节](docs/入门教程.md#6-想改-prompt到哪里改)。计划生成的 `graph.json` 中 `params.prompt` 字段可用于确认实际生效的文案。
 
@@ -92,3 +93,5 @@ python tools/produce_als_resources.py run --scope run --keep-going
 ## 许可
 
 本 Pipeline 自有代码和相关文档采用 [PolyForm Noncommercial License 1.0.0](LICENSE.md)。该许可不追溯撤销原有 MIT 授权，也不替代 Kimodo、模型、原版 ALS 资源或其他第三方内容各自的许可。分发时请保留根目录许可证和声明文件；详情见 [NOTICE](NOTICE)、[ASSET_LICENSE.md](ASSET_LICENSE.md) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+Mantle 可使用 `tools/refine_mantle.py` 按失败区间自动补充稀疏条件并继续完整交付；门禁分类、模块化风格、约束反馈和目标修复见[换风格制作方法](docs/architecture/mantle-style-generalization.md)。

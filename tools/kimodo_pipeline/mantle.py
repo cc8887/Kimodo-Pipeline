@@ -157,6 +157,12 @@ def native_reference(name, rig, index_path=None):
 
 
 def materialize_constraints(params, reference, rig):
+    conditioning_policy = params.get('mantleConstraintPolicy', 'legacy-reference-v1')
+    if conditioning_policy == 'sparse-contact-v1':
+        from .mantle_constraints import materialize_sparse_constraints
+        return materialize_sparse_constraints(params, reference, rig)
+    if conditioning_policy != 'legacy-reference-v1':
+        raise ValueError('Unknown Mantle conditioning policy: '+str(conditioning_policy))
     name = params['semantic']; spec = profile(name)
     count = int(params['seconds']*params['fps'])
     guide = resample(reference, count, rig)

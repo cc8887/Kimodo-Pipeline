@@ -15,7 +15,10 @@ class MantleContactBakeTests(unittest.TestCase):
         self.assertEqual(high['keys'][45]['leftHandSupport'],1)
         self.assertEqual(high['keys'][45]['rightHandSupport'],0)
         control=high['bodyAdvanceControl']
-        self.assertEqual(control['policy'],'target-skin-front-clearance-v1')
+        self.assertEqual(control['policy'],'target-skin-top-or-front-v2')
+        self.assertEqual(control['maximumDepthCm'],2.)
+        self.assertEqual(control['reservedDepthMarginCm'],.2)
+        self.assertLessEqual(control['maximumObservedBodyDepthCm'],1.800001)
         self.assertGreater(control['maximumAdvanceDelayCm'],0)
         self.assertLessEqual(high['bodyBlendReadyTimeSeconds'],17/30)
         advance=np.array([k['advanceCm'] for k in high['keys']])

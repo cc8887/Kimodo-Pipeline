@@ -95,6 +95,18 @@ class MantleCurveContractTests(unittest.TestCase):
         row['semanticName']='Mantle_Low_Left'
         with self.assertRaisesRegex(ValueError,'semantic identity'):self.check()
 
+    def test_top_or_front_domain_cannot_expand_original_depth_gate(self):
+        body=dict(policy='target-skin-top-or-front-v2',maximumDepthCm=2.,
+            reservedDepthMarginCm=.2,solverMaximumDepthCm=1.8,maximumObservedBodyDepthCm=1.8)
+        self.value['sequences'][0]['bodyAdvanceControl']=body
+        self.assertTrue(self.check()['passed'])
+        for key,value in [('maximumDepthCm',2.1),('reservedDepthMarginCm',0.),
+                ('solverMaximumDepthCm',2.),('maximumObservedBodyDepthCm',1.9)]:
+            with self.subTest(key=key):
+                saved=body[key];body[key]=value
+                with self.assertRaisesRegex(ValueError,'hard-domain budget'):self.check()
+                body[key]=saved
+
     def test_resampling_and_contact_corruption_are_rejected(self):
         for field,bad in [('timeSeconds',1.25),('leftHandSupport',1.01),('advanceCm',float('nan'))]:
             with self.subTest(field=field):

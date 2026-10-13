@@ -9,6 +9,7 @@ import numpy as np
 POLICY = 'mantle-curve-semantics-v1'
 CONTROL_FILE = 'config/refactored_mantle_contacts.json'
 DISTANCE_EPSILON_CM = 1e-5
+TRANSITION_LIFT_CM = 3.
 
 
 def contract():
@@ -112,8 +113,13 @@ def validate(value, animation, trajectories):
             raise ValueError('Missing or stale mantle forward plateau analysis')
         if sequence['semanticName'] == 'Mantle_High':
             body = sequence.get('bodyAdvanceControl') or {}
-            if body.get('policy') != 'target-skin-front-clearance-v1':
+            if body.get('policy') not in ('target-skin-front-clearance-v1','target-skin-top-or-front-v2'):
                 raise ValueError('High mantle requires target-skin clearance baking')
+            if body.get('policy')=='target-skin-top-or-front-v2':
+                if (body.get('maximumDepthCm')!=2. or body.get('reservedDepthMarginCm')!=.2 or
+                        body.get('solverMaximumDepthCm')!=1.8 or
+                        not 0.<=body.get('maximumObservedBodyDepthCm',float('inf'))<=1.800001):
+                    raise ValueError('Invalid mantle top-or-front hard-domain budget or proof')
             if np.max(np.diff(advance)/np.diff(times)) > 200.+.001:
                 raise ValueError('High mantle clearance speed exceeds bake contract')
         elif np.max(np.abs(advance-original)) > .001:

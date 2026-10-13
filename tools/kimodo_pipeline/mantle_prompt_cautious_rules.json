@@ -1,0 +1,4 @@
+{
+  "extends": "directional_gait_rules.json",
+  "mantlePrompt": {"schemaVersion": 1, "recipe": "cautious"}
+}

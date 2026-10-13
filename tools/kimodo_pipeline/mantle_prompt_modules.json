@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "modules": {
+    "action": {
+      "text": "A person mantles onto a {ledge} ledge,",
+      "requires": {"action": "mantle", "repetitions": 1}
+    },
+    "contact": {
+      "text": "planting {hands} on the top surface, palms down and fingers forward.",
+      "requires": {"handContactRequired": true}
+    },
+    "transition": {
+      "text": "Keep the supporting palms fixed while pulling and pushing the body up, then release the hands and finish standing with both feet on the ledge.",
+      "requires": {"finalSupport": "both-feet"}
+    }
+  },
+  "styles": {
+    "default": {"text": ""},
+    "cautious": {"text": "The person moves cautiously, with deliberate weight shifts and a controlled rise."},
+    "light": {"text": "The person moves lightly and confidently, with fluid weight shifts and a brisk rise."}
+  },
+  "recipes": {
+    "default": {"style": "default", "modifiers": []},
+    "cautious": {"style": "cautious", "modifiers": []},
+    "light": {"style": "light", "modifiers": []}
+  }
+}

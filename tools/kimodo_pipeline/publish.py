@@ -269,7 +269,8 @@ def prepare_target_raw(j,v4,ref,index,*,factor_root=True):
         j['_targetMantleInputRaw']=copy.deepcopy(result)
         result,path,rotation,report=target(result,skel,j['contract']['semanticName'])
         from .mantle_hand_repair import immutable_target_skin, repair as repair_mantle_hands
-        result,hand_report=repair_mantle_hands(result,skel,j['contract']['semanticName'],immutable_target_skin(skel))
+        result,hand_report=repair_mantle_hands(result,skel,j['contract']['semanticName'],immutable_target_skin(skel),
+            reconstruct_twist=bool(j.get('twistReconstructionPolicy')))
         report['handSkinRepair']=hand_report
         report['checks'].append(dict(check='boundedTargetHandSkinRepair',passed=hand_report['passed']))
         report['passed']=report['passed'] and hand_report['passed']

@@ -12,7 +12,7 @@ from scipy.spatial.transform import Rotation
 from .graph import read_json
 from .runner import file_hash, write_json
 from .mantle import PROFILES, reference_input
-from .mantle_curve_contract import contract, root_progress, analysis, validate
+from .mantle_curve_contract import contract, root_progress, analysis, validate, TRANSITION_LIFT_CM
 
 POLICY = 'mantle-fixed-ledge-contact-v1'
 from .paths import asset_root
@@ -28,7 +28,11 @@ def skin_advance(raw, skeleton, spec, planar, skin):
     from .publish import world_pose
     world=world_pose(raw,skeleton);count=len(planar)
     body=np.setdiff1d(np.arange(skin.count),np.union1d(skin.sides['l'],skin.sides['r']))
-    limits=np.empty(count);wrist_distances=[]
+    limits=np.empty(count);preferred=np.empty(count);wrist_distances=[];points_by_frame=[]
+    # The existing final full-skin gate remains 2 cm. Reserve 0.2 cm inside
+    # that gate; a vertex is feasible above the top OR outside the front.
+    # A near-top toe must not force the whole earlier clip behind the front.
+    maximum_depth=2.;reserve=.2;hard_depth=maximum_depth-reserve
     for side in spec['hands']:
         p=world['hand_'+side[0]][1]
         wrist_distances.append(np.maximum(p[:,2]-spec['heightCm'],50-p[:,1]))
@@ -37,8 +41,12 @@ def skin_advance(raw, skeleton, spec, planar, skin):
     for frame in range(count):
         pose={bone:(v[0][frame],v[1][frame]) for bone,v in world.items()}
         points=skin.evaluate(pose,body)
+        points_by_frame.append(points)
         below=points[:,2]<spec['heightCm']-.5
         excess=max(0.,float(points[below,1].max())-50.+.5) if np.any(below) else 0.
+        preferred[frame]=max(0.,planar[frame]-excess)
+        deep=points[:,2]<spec['heightCm']-hard_depth
+        excess=max(0.,float(points[deep,1].max())-50.-hard_depth) if np.any(deep) else 0.
         limits[frame]=max(0.,planar[frame]-excess)
     allowed=np.minimum(planar,limits)
     allowed=np.minimum.accumulate(allowed[::-1])[::-1]
@@ -47,8 +55,17 @@ def skin_advance(raw, skeleton, spec, planar, skin):
     for frame in range(1,count):result[frame]=min(result[frame],result[frame-1]+200.*dt)
     if abs(result[-1]-planar[-1])>.001:
         raise ValueError('Skin-safe mantle advance cannot reach the landing endpoint')
-    return result,ready,dict(policy='target-skin-front-clearance-v1',meshSha256=skin.mesh_sha256,
-        depthMarginCm=.5,maximumAdvanceSpeedCmPerSecond=200.,
+    depths=[max(0.,-float(np.maximum(points[:,2]-spec['heightCm'],
+        50.-points[:,1]-(result[frame]-planar[frame])).min())) for frame,points in enumerate(points_by_frame)]
+    if max(depths)>hard_depth+1e-6:
+        raise ValueError('No nonnegative monotone mantle advance satisfies the body skin domain')
+    preferred=np.minimum.accumulate(preferred[::-1])[::-1]
+    return result,ready,dict(policy='target-skin-top-or-front-v2',meshSha256=skin.mesh_sha256,
+        maximumDepthCm=maximum_depth,reservedDepthMarginCm=reserve,solverMaximumDepthCm=hard_depth,
+        legacyClearanceComparisonCm=.5,legacyMaximumAdvanceDelayCm=float(np.max(planar-preferred)),
+        selection='maximum authored advance within top-or-front hard domain; legacy clearance is comparison only',
+        maximumObservedBodyDepthCm=max(depths),validationScope='authored keys; independent runtime full-skin gate required',
+        maximumAdvanceSpeedCmPerSecond=200.,
         maximumAdvanceDelayCm=float(np.max(planar-result)),bodyVertices=len(body),
         bodyBlendReadyTimeSeconds=ready)
 
@@ -99,7 +116,7 @@ def bake(config):
             anchors[side] = dict(positionCm=position.tolist(), quaternionXYZW=orientation.tolist())
             weights[side] = np.minimum(np.clip((times-start+1/fps)*fps, 0, 1),
                                        np.clip((end+1/fps-times)*fps, 0, 1))
-        sequence=dict(source=source, semanticName=name, anchors=anchors, reference=provenance,transitionLiftCm=3.,
+        sequence=dict(source=source, semanticName=name, anchors=anchors, reference=provenance,transitionLiftCm=TRANSITION_LIFT_CM,
             keys=[dict(timeSeconds=float(t), leftHandSupport=float(weights['left'][i]),
                 rightHandSupport=float(weights['right'][i]), rootAdvanceCm=float(original_planar[i]), advanceCm=float(planar[i]),
                 liftCm=float(lift[i]), remainingLiftCm=float(lift[i]-lift[-1])) for i,t in enumerate(times)])

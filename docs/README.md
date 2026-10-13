@@ -1,5 +1,9 @@
 # 文档入口
 
+- [Mantle 换风格制作方法](architecture/mantle-style-generalization.md)：门禁合理性、提示词模块、失败区间驱动的稀疏约束、目标修复和完整交付／续跑命令。
+
+- [ALS 实体 twist 重建](architecture/kimodo-twist-reconstruction.md)：八骨骨段轴分配、连续性、接触后重建、逐资产前检和已有来源的局部重出；[本轮生产证据](verification/2026-10-12-mantle-twist-reconstruction.md)。
+
 - [单周期联合接触修复与游戏接入](verification/2026-10-13-joint-loop-game-integration.md)：最终风格后共享端点／接触联合求解、原预算、目标脚掌候选排序、真实蒙皮失败保留与增量合成；[可执行制作方法](architecture/kimodo-single-loop-crop.md)。
 - [多周期候选制作单周期 Loop](architecture/kimodo-single-loop-crop.md)：指定选段、行进逆变换、接触与累计预算、最终风格后固定端点 Easing 修复和完整验收；[原裁剪试验](verification/2026-10-13-single-loop-crop.md)、[最终接缝修复与支撑失败边界](verification/2026-10-13-anchored-loop-seam.md)。
 - [Sprint 滑步门禁复核](verification/2026-10-13-sprint-slip-gate-audit.md)：近地速度误归因、支撑边界与脚跟滚动、240 Hz 插值、真实漂移负控和 Viewer 原版回退来源。

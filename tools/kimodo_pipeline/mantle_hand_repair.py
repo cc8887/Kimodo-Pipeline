@@ -6,6 +6,7 @@ anchors stay fixed; finger rotations and release-arm IK preserve bone lengths.
 from __future__ import annotations
 from .paths import reference_root
 import copy
+from time import perf_counter
 from pathlib import Path
 import numpy as np
 from scipy.optimize import minimize
@@ -15,7 +16,8 @@ from .runner import file_hash
 from .mantle import profile, _hand_frames, _arm_rig
 from .gait_constraints import solve_foot_ik
 
-POLICY = 'mantle-target-skin-hand-clearance-v1'
+POLICY = 'mantle-target-skin-hand-clearance-v2'
+LEGACY_POLICY = 'mantle-target-skin-hand-clearance-v1'
 FINGER_LIMIT_DEGREES = 45.
 ARM_LIMIT_CM = 10.
 CLEARANCE_CM = .2
@@ -94,7 +96,15 @@ def clearance(points, height):
     return np.maximum(points[:,2]-height,50.-points[:,1])
 
 
-def repair(raw, skeleton, name, skin):
+def repair(raw, skeleton, name, skin, *, reconstruct_twist=False, telemetry=None):
+    started=perf_counter()
+    timings=dict(initialSolverCalls=0,initialSolverSeconds=0.,initialSolverIterations=0,
+                 recoverySolverCalls=0,recoverySolverSeconds=0.,recoverySolverIterations=0)
+    def measured_solve(kind,*args,**kwargs):
+        begin=perf_counter();fitted=minimize(*args,**kwargs)
+        timings[kind+'SolverCalls']+=1;timings[kind+'SolverSeconds']+=perf_counter()-begin
+        timings[kind+'SolverIterations']+=int(getattr(fitted,'nit',0))
+        return fitted
     spec=profile(name); count=raw['sampledKeyCount']; names=skeleton['rawBoneNames'];parents=skeleton['rawParents']
     if any(p>=i or p< -1 for i,p in enumerate(parents)):raise ValueError('Hand repair requires parent-first physical bones')
     lookup={n.lower():i for i,n in enumerate(names)};tracks={t['bone'].lower():t for t in raw['tracks']}
@@ -106,8 +116,15 @@ def repair(raw, skeleton, name, skin):
         if n.startswith(FINGERS) or n.startswith(('upperarm_','lowerarm_','hand_')):
             if not np.allclose(offsets[:,i],skeleton['referencePose'][i]['position'],atol=.001,rtol=0):
                 raise ValueError('Hand repair requires immutable arm/finger offsets: '+n)
-    original=rotations.copy(); result=copy.deepcopy(raw);records=[]
+    original=rotations.copy(); result=copy.deepcopy(raw);records=[];support_anchors={}
+    twist_plan = None
+    if reconstruct_twist:
+        from .twist_reconstruction import TwistReconstruction
+        twist_plan = TwistReconstruction(skeleton)
+        twist_branches = twist_plan.angles(rotations)
     def world_at(frame, local):
+        if twist_plan is not None:
+            local = twist_plan.matrices(local[None], unwrap=False, branches=twist_branches[frame])[0]
         gr=np.empty_like(local); gp=np.empty((len(names),3))
         for i,p in enumerate(parents):
             gr[i]=local[i] if p<0 else gr[p]@local[i]
@@ -122,6 +139,7 @@ def repair(raw, skeleton, name, skin):
         support_world=[world_at(int(frame),original[frame])[hand] for frame in contact_keys]
         anchor_rotation=Rotation.from_matrix(np.stack([w[0] for w in support_world])).mean().as_matrix()
         anchor_position=np.mean([w[1] for w in support_world],axis=0)
+        support_anchors[side_name]=(anchor_rotation,anchor_position)
         def contact_world(world):
             wrist=world[hand];delta=anchor_rotation@wrist[0].T
             return {n:(delta@r,anchor_position+delta@(p-wrist[1])) for n,(r,p) in world.items()}
@@ -156,7 +174,7 @@ def repair(raw, skeleton, name, skin):
                     if transition:constraints.append(clearance(skin.evaluate(contact_world(world),selected),spec['heightCm'])-CLEARANCE_CM)
                     return np.concatenate(constraints)
                 if np.min(constraints(np.zeros(9)))>=-1e-6:continue
-                fitted=minimize(lambda x:np.sum(x*x),np.zeros(9),method='SLSQP',
+                fitted=measured_solve('initial',lambda x:np.sum(x*x),np.zeros(9),method='SLSQP',
                     constraints=[dict(type='ineq',fun=constraints)],
                     bounds=[(-limit,limit)]*9,options=dict(ftol=1e-9,maxiter=100))
                 # Keep a bounded improvement even if the desired 0.2 cm air
@@ -200,6 +218,78 @@ def repair(raw, skeleton, name, skin):
                             best_clearance= candidate_clearance;best_pose=candidate
                             arm_shift=shift;requested_shift=distance
                     local=best_pose
+            # A deeply submerged wrist can make finger-only clearance
+            # infeasible before the bounded arm move. Retry fingers in the
+            # moved pose, always measuring their total rotation against the
+            # original input (never reset the 45-degree budget each pass).
+            # This is an interior target of the unchanged 2 cm depth gate.
+            recovery_depth=MAXIMUM_DEPTH_CM-.1
+            def depths(pose,selected):
+                posed=world_at(frame,pose)
+                actual=max(0.,-float(clearance(skin.evaluate(posed,selected),spec['heightCm']).min()))
+                anchored=max(0.,-float(clearance(skin.evaluate(contact_world(posed),selected),spec['heightCm']).min())) if transition else 0.
+                return actual,anchored
+            def least_clearance(pose,selected):
+                posed=world_at(frame,pose)
+                actual=float(clearance(skin.evaluate(posed,selected),spec['heightCm']).min())
+                anchored=float(clearance(skin.evaluate(contact_world(posed),selected),spec['heightCm']).min()) if transition else float('inf')
+                return min(actual,anchored)
+            post_arm_refinements=[]
+            if max(depths(local,skin.sides[side]))>MAXIMUM_DEPTH_CM:
+                for finger in FINGERS:
+                    selected=skin.fingers[finger+'_'+side]
+                    if max(depths(local,selected))<=recovery_depth:continue
+                    indices=[lookup[f'{finger}_{part:02}_{side}'] for part in (1,2,3)]
+                    baseline=original[frame,indices].copy()
+                    initial=Rotation.from_matrix(baseline.swapaxes(-1,-2)@local[indices]).as_rotvec().reshape(-1)
+                    def recovery_pose(x):
+                        pose=local.copy();pose[indices]=baseline@Rotation.from_rotvec(x.reshape(3,3)).as_matrix()
+                        return pose
+                    def recovery_constraints(x):
+                        posed=world_at(frame,recovery_pose(x))
+                        values=[limit**2-np.sum(x.reshape(3,3)**2,axis=1),
+                            clearance(skin.evaluate(posed,selected),spec['heightCm'])-required_clearance]
+                        if transition:
+                            values.append(clearance(skin.evaluate(contact_world(posed),selected),spec['heightCm'])-required_clearance)
+                        return np.concatenate(values)
+                    starts=[initial,np.zeros(9)]
+                    # Symmetric small bends avoid a zero first derivative for
+                    # straight fingers aligned with an obstacle-plane normal.
+                    for axis in (1,2):
+                        for sign in (-1,1):
+                            seed=np.zeros((3,3));seed[:,axis]=sign*np.deg2rad(8.)
+                            starts.append(seed.reshape(-1))
+                    before_selected=max(depths(local,selected));before_whole=max(depths(local,skin.sides[side]))
+                    best_pose=local;best_clearance=least_clearance(local,selected);attempts=0;used_goal=None
+                    # Prefer positive clearance, then progressively smaller
+                    # interior margins. At each goal minimize total squared
+                    # rotation from the original pose, within the same budget.
+                    for required_clearance in (CLEARANCE_CM,0.,-1.,-recovery_depth):
+                        used_goal=required_clearance
+                        if best_clearance>=required_clearance-1e-6:break
+                        seeds=[Rotation.from_matrix(baseline.swapaxes(-1,-2)@best_pose[indices]).as_rotvec().reshape(-1),*starts]
+                        # Strong optional goals receive a bounded preference
+                        # search; reserve the complete symmetric seed set for
+                        # the last interior goal of the unchanged depth gate.
+                        if required_clearance==CLEARANCE_CM:seeds=seeds[:2]
+                        elif required_clearance!=-recovery_depth:seeds=seeds[:1]
+                        for seed in seeds:
+                            fitted=measured_solve('recovery',lambda x:float(x@x),seed,method='SLSQP',
+                                constraints=[dict(type='ineq',fun=recovery_constraints)],
+                                bounds=[(-limit,limit)]*9,options=dict(ftol=1e-9,maxiter=80 if required_clearance==-recovery_depth else 60))
+                            attempts+=1
+                            if not np.isfinite(fitted.x).all() or np.max(np.linalg.norm(fitted.x.reshape(3,3),axis=1))>limit+1e-8:continue
+                            candidate=recovery_pose(fitted.x);candidate_clearance=least_clearance(candidate,selected)
+                            whole_depth=max(depths(candidate,skin.sides[side]))
+                            if candidate_clearance>best_clearance+1e-6 and whole_depth<=before_whole+1e-7:
+                                best_pose=candidate;best_clearance=candidate_clearance
+                            if best_clearance>=required_clearance-1e-6:break
+                        if best_clearance>=required_clearance-1e-6:break
+                    local=best_pose
+                    post_arm_refinements.append(dict(finger=finger,attempts=attempts,
+                        requestedClearanceCm=used_goal,achievedClearanceCm=best_clearance,
+                        beforeDepthCm=before_selected,afterDepthCm=max(depths(local,selected)),
+                        wholeDepthBeforeCm=before_whole,wholeDepthAfterCm=max(depths(local,skin.sides[side]))))
             rotations[frame]=local
             after=world_at(frame,local);points=skin.evaluate(after,skin.sides[side])
             after_depth=max(0.,-float(clearance(points,spec['heightCm']).min()))
@@ -209,16 +299,46 @@ def repair(raw, skeleton, name, skin):
                 beforeDepthCm=before_depth,afterDepthCm=after_depth,transitionAnchorChecked=bool(transition),
                 transitionAnchorDepthCm=projected_depth,armCorrectionCm=arm_shift,requestedArmCorrectionCm=requested_shift,
                 maximumFingerCorrectionDegrees=float(max(angles[lookup[f'{f}_{p:02}_{side}']] for f in FINGERS for p in (1,2,3))),
-                wristDisplacementCm=float(np.linalg.norm(after['hand_'+side][1]-before['hand_'+side][1]))))
+                wristDisplacementCm=float(np.linalg.norm(after['hand_'+side][1]-before['hand_'+side][1])),
+                postArmFingerRefinement=post_arm_refinements))
     changed={f'{f}_{p:02}_{s[0]}' for s in spec['hands'] for f in FINGERS for p in (1,2,3)}
     changed|={b+'_'+s[0] for s in spec['hands'] for b in ('upperarm','lowerarm','hand')}
+    if twist_plan is not None:
+        rotations = twist_plan.matrices(rotations)
+        changed |= {segment['bone'] for segment in twist_plan.bones}
+    from .mantle_temporal_hand_repair import refine as refine_temporal
+    from .root_ownership import semantic_hash
+    rotations,temporal=refine_temporal(rotations,original,offsets,skeleton,spec,raw['playLength'],
+        skin,semantic_hash(raw),twist_plan=twist_plan,telemetry=telemetry)
+    # Refresh authored-key evidence after the joint neighbouring-key pass.
+    # Its independent report also checks keys not touched by the first pass.
+    for row in records:
+        frame=row['frame'];side_name=row['side'];side=side_name[0];hand='hand_'+side
+        after=world_at(frame,rotations[frame]);before=world_at(frame,original[frame])
+        row['afterDepthCm']=max(0.,-float(clearance(skin.evaluate(after,skin.sides[side]),spec['heightCm']).min()))
+        if row['transitionAnchorChecked']:
+            anchor_rotation,anchor_position=support_anchors[side_name]
+            delta=anchor_rotation@after[hand][0].T
+            anchored={n:(delta@r,anchor_position+delta@(p-after[hand][1])) for n,(r,p) in after.items()}
+            row['transitionAnchorDepthCm']=max(0.,-float(clearance(skin.evaluate(anchored,skin.sides[side]),spec['heightCm']).min()))
+        angles=Rotation.from_matrix(original[frame].swapaxes(-1,-2)@rotations[frame]).magnitude()*180/np.pi
+        row['maximumFingerCorrectionDegrees']=float(max(angles[lookup[f'{f}_{p:02}_{side}']] for f in FINGERS for p in (1,2,3)))
+        row['wristDisplacementCm']=float(np.linalg.norm(after[hand][1]-before[hand][1]))
     for n in changed:result_track=next(t for t in result['tracks'] if t['bone'].lower()==n);result_track['rotations']=Rotation.from_matrix(rotations[:,lookup[n]]).as_quat().tolist()
     report=dict(schemaVersion=1,policy=POLICY,semanticName=name,meshSha256=skin.mesh_sha256,
         clearanceCm=CLEARANCE_CM,airClearanceCm=AIR_CLEARANCE_CM,maximumDepthCm=MAXIMUM_DEPTH_CM,maximumFingerCorrectionDegrees=FINGER_LIMIT_DEGREES,
         maximumArmCorrectionCm=ARM_LIMIT_CM,records=records,
         passed=all(r['afterDepthCm']<=MAXIMUM_DEPTH_CM and r['transitionAnchorDepthCm']<=MAXIMUM_DEPTH_CM and r['maximumFingerCorrectionDegrees']<=FINGER_LIMIT_DEGREES+1e-3
             and r['wristDisplacementCm']<=ARM_LIMIT_CM+1e-3 and (not r['support'] or r['wristDisplacementCm']<=1e-5) for r in records),
-        scope='configured support hands at authored keys; final runtime skin remains independently gated',productionReady=False)
+        temporalSkin=temporal,
+        scope='configured support hands at authored keys and finite local-nlerp subframe samples; final runtime skin remains independently gated',productionReady=False)
+    report['passed']=report['passed'] and temporal['passed']
+    if twist_plan is not None:
+        report['twistReconstruction'] = twist_plan.assess(result)
+        report['passed'] = report['passed'] and report['twistReconstruction']['passed']
+    if telemetry is not None:
+        telemetry.update(timings,totalSeconds=perf_counter()-started,
+            recoveredFingerGroups=sum(len(row['postArmFingerRefinement']) for row in records),passed=report['passed'])
     return result,report
 
 
@@ -233,7 +353,7 @@ def immutable_target_skin(skeleton):
 
 def validate_report(report):
     """A claimed pass cannot enlarge the budgets or omit transition checks."""
-    if (report.get('policy')!=POLICY or not report.get('passed') or
+    if (report.get('policy') not in (POLICY,LEGACY_POLICY) or not report.get('passed') or
         report.get('maximumDepthCm')!=MAXIMUM_DEPTH_CM or
         report.get('maximumArmCorrectionCm')!=ARM_LIMIT_CM or
         report.get('maximumFingerCorrectionDegrees')!=FINGER_LIMIT_DEGREES):
@@ -248,3 +368,22 @@ def validate_report(report):
                 raise ValueError('Mantle hand correction/depth budget exceeded: '+key)
         if row['support'] and row['wristDisplacementCm']>1e-5:
             raise ValueError('Mantle support wrist was moved by hand-skin repair')
+    if report['policy']==POLICY:
+        temporal=report.get('temporalSkin') or {}
+        from .mantle_temporal_hand_repair import POLICY as TEMPORAL_POLICY,SAMPLE_STEP
+        reference=temporal.get('originalReferenceSha256','')
+        if (temporal.get('policy')!=TEMPORAL_POLICY or not temporal.get('passed') or
+                temporal.get('sampleStepFrames')!=SAMPLE_STEP or temporal.get('maximumDepthCm')!=2. or
+                temporal.get('intervals',0)<1 or temporal.get('sampleCount')!=round(temporal['intervals']/SAMPLE_STEP)+1 or
+                len(reference)!=64 or any(c not in '0123456789abcdef' for c in reference) or not temporal.get('hands')):
+            raise ValueError('Missing or failed mantle interpolation skin evidence')
+        if temporal.get('assetBudgetSampling')!=dict(reference='original-raw-subframes',sampleStepFrames=SAMPLE_STEP,runtimeIKIncluded=False):
+            raise ValueError('Missing original-reference subframe asset budgets')
+        for row in temporal['hands']:
+            for key,maximum in [('maximumDepthCm',2.),('maximumCumulativeWristCorrectionCm',10.00001),
+                    ('maximumFullSupportReachResidualCm',.001),
+                    ('maximumSupportWristCorrectionCm',1e-5),('maximumWristOrientationChangeDegrees',1e-5),
+                    ('maximumCumulativeFingerCorrectionDegrees',45.00001)]:
+                value=row.get(key,float('nan'))
+                if not np.isfinite(value) or value<0 or value>maximum+1e-7:
+                    raise ValueError('Mantle interpolation skin/cumulative budget exceeded: '+key)
