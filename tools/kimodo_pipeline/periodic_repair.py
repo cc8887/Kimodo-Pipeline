@@ -119,7 +119,7 @@ def repair_periodic(source, rig, speed, *, harmonics=5, ramp_frames=3,
     compared_source=np.stack([Slerp(np.arange(source_period+1),Rotation.from_matrix(local_source[:,j]))(
         phase*source_period).as_matrix() for j in range(len(rig['jointNames']))],axis=1)
     fit_angles = np.linalg.norm(Rotation.from_matrix(
-        fitted_local@compared_source.swapaxes(-1, -2)).as_rotvec().reshape(-1, 3), axis=-1)
+        (fitted_local@compared_source.swapaxes(-1, -2)).reshape(-1, 3, 3)).as_rotvec().reshape(-1, 3), axis=-1)
     maximum_fit_degrees = float(np.rad2deg(fit_angles.max()))
     if maximum_fit_degrees > max_pose_fit_degrees:
         raise ValueError(f'Periodic pose fitting exceeds correction bound: {maximum_fit_degrees:.4f} degrees')
