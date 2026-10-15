@@ -52,11 +52,15 @@ class Runner:
             if graph['rules'].get('reuseModel',False):
                 # HF cache constants are captured at first import, including
                 # imports made by rig construction and checkpoint fingerprinting.
-                self.backend_env.update(LOCAL_CACHE='True',HF_HUB_OFFLINE='1',TEXT_ENCODER_MODE='local',TEXT_ENCODER='llm2vec')
+                # setdefault (not force-update): a preconfigured local deployment
+                # (e.g. TEXT_ENCODER=llm2vec-int8 + CHECKPOINT_DIR) passes through.
+                for _k,_v in (('LOCAL_CACHE','True'),('HF_HUB_OFFLINE','1'),
+                              ('TEXT_ENCODER_MODE','local'),('TEXT_ENCODER','llm2vec')):
+                    self.backend_env.setdefault(_k,_v)
                 self.backend_env.setdefault('TEXT_ENCODER_DEVICE','cpu')
                 for name in ('HF_HUB_CACHE','KIMODO_LLAMA_BASE_MODEL_PATH','LOCAL_CACHE','HF_HUB_OFFLINE','TEXT_ENCODER_MODE','TEXT_ENCODER','TEXT_ENCODER_DEVICE'):
                     if name in self.backend_env:os.environ[name]=self.backend_env[name]
-                os.environ.pop('CHECKPOINT_DIR',None)
+                # Preserve a preconfigured local CHECKPOINT_DIR (int8/custom layout).
         if any(p.name.lower() in ('assets','reference') for p in [self.output,*self.output.parents]):
             raise ValueError('Authoring cache must be outside production assets/reference directories')
         # Include implementation changes in every cache identity.
@@ -69,22 +73,52 @@ class Runner:
 
     def checkpoint_identity(self,model):
         if model in self.checkpoints:return self.checkpoints[model]
-        sys.path.insert(0,str(self.repo))
-        from huggingface_hub import snapshot_download
-        from kimodo.model.registry import MODEL_NAMES, resolve_model_name
-        key=model if model in MODEL_NAMES else resolve_model_name(model,'Kimodo')
-        repositories=[MODEL_NAMES[key],
-                      'McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp',
-                      'McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised']
         files={}
-        for repository in repositories:
-            path=Path(snapshot_download(repo_id=repository,local_files_only=True,cache_dir=self.backend_env.get('HF_HUB_CACHE')))
-            for file in sorted(path.rglob('*')):
-                if file.is_file():files[repository+'/'+file.relative_to(path).as_posix()]=file_hash(file)
-        if self.backend_env.get('KIMODO_LLAMA_BASE_MODEL_PATH'):
-            path=Path(self.backend_env['KIMODO_LLAMA_BASE_MODEL_PATH'])
-            for file in sorted(path.rglob('*')):
-                if file.is_file():files['llama-base/'+file.relative_to(path).as_posix()]=file_hash(file)
+        # Local custom-layout deployment (CHECKPOINT_DIR / TEXT_ENCODERS_DIR,
+        # e.g. int8 merged LLM2Vec): hash the files the backend actually loads
+        # WITHOUT importing kimodo/torch — torch resident in the orchestrator
+        # process provably triggers native crashes (glibc segfault) later in
+        # the conversion/FBX-readback stage. Receipt still changes whenever
+        # weights or the encoder change.
+        local_files={}
+        for env_name in ('CHECKPOINT_DIR','TEXT_ENCODERS_DIR','KIMODO_LLAMA_BASE_MODEL_PATH'):
+            root=self.backend_env.get(env_name)
+            if root and Path(root).is_dir():
+                for file in sorted(Path(root).rglob('*')):
+                    if file.is_file() and file.stat().st_size>0:
+                        local_files[env_name+'/'+file.relative_to(root).as_posix()]=file_hash(file)
+        if local_files and not self.backend_env.get('HF_HUB_CACHE'):
+            self.checkpoints[model]=digest({'local-layout:'+model:digest(local_files)})
+            return self.checkpoints[model]
+        try:
+            sys.path.insert(0,str(self.repo))
+            from huggingface_hub import snapshot_download
+            from kimodo.model.registry import MODEL_NAMES, resolve_model_name
+            key=model if model in MODEL_NAMES else resolve_model_name(model,'Kimodo')
+            repositories=[MODEL_NAMES[key],
+                          'McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp',
+                          'McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised']
+            for repository in repositories:
+                path=Path(snapshot_download(repo_id=repository,local_files_only=True,cache_dir=self.backend_env.get('HF_HUB_CACHE')))
+                for file in sorted(path.rglob('*')):
+                    if file.is_file():files[repository+'/'+file.relative_to(path).as_posix()]=file_hash(file)
+            if self.backend_env.get('KIMODO_LLAMA_BASE_MODEL_PATH'):
+                path=Path(self.backend_env['KIMODO_LLAMA_BASE_MODEL_PATH'])
+                for file in sorted(path.rglob('*')):
+                    if file.is_file():files['llama-base/'+file.relative_to(path).as_posix()]=file_hash(file)
+        except Exception:
+            # Local custom-layout deployment (CHECKPOINT_DIR / TEXT_ENCODERS_DIR,
+            # e.g. int8 merged LLM2Vec). Hash the files the backend actually loads;
+            # the receipt still changes whenever weights or the encoder change.
+            local_files={}
+            for env_name in ('CHECKPOINT_DIR','TEXT_ENCODERS_DIR','KIMODO_LLAMA_BASE_MODEL_PATH'):
+                root=self.backend_env.get(env_name)
+                if root and Path(root).is_dir():
+                    for file in sorted(Path(root).rglob('*')):
+                        if file.is_file() and file.stat().st_size>0:
+                            local_files[env_name+'/'+file.relative_to(root).as_posix()]=file_hash(file)
+            if not local_files:raise
+            files={'local-layout:'+model:digest(local_files)}
         self.checkpoints[model]=digest(files)
         return self.checkpoints[model]
 
@@ -361,10 +395,13 @@ class Runner:
             if p.get('postProcessing',True) is False:
                 args.append('--no-postprocess')
             env=self.backend_env.copy();env.setdefault('TEXT_ENCODER_DEVICE','cpu')
-            env.update(LOCAL_CACHE='True',HF_HUB_OFFLINE='1',TEXT_ENCODER_MODE='local',TEXT_ENCODER='llm2vec')
-            # The cache identity hashes the resolved HF snapshots, so don't allow
-            # a separate CHECKPOINT_DIR or encoder service to silently override them.
-            env.pop('CHECKPOINT_DIR',None)
+            # Upstream defaults: offline local llm2vec. setdefault (not force-update)
+            # so a preconfigured local deployment (llm2vec-int8, custom
+            # CHECKPOINT_DIR/TEXT_ENCODERS_DIR/KIMODO_QUANTIZE) passes through.
+            env.setdefault('LOCAL_CACHE','True')
+            env.setdefault('HF_HUB_OFFLINE','1')
+            env.setdefault('TEXT_ENCODER_MODE','local')
+            env.setdefault('TEXT_ENCODER','llm2vec')
             if self.graph['rules'].get('reuseModel', False):
                 # The same public inference API/settings as the CLI, with one
                 # model load per process. Each job still resets its own seed.
